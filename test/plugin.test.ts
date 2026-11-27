@@ -1,0 +1,56 @@
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import { apply } from '../src/index.js'
+
+type FakeContext = {
+  on(event: string, handler: (...args: unknown[]) => void): () => void
+  effect(fn: () => (() => void) | void): () => void
+  get(name: string): unknown
+  inject(deps: string[], fn: (ctx: unknown) => void): void
+}
+
+function fakeContext(): { ctx: FakeContext; listeners: Map<string, ((...args: unknown[]) => void)[]>; cleanups: (() => void)[] } {
+  const listeners = new Map<string, ((...args: unknown[]) => void)[]>()
+  const cleanups: (() => void)[] = []
+  const ctx: FakeContext = {
+    on(event, handler) {
+      const bucket = listeners.get(event) ?? []
+      bucket.push(handler)
+      listeners.set(event, bucket)
+      return () => {}
+    },
+    effect(fn) {
+      const cleanup = fn()
+      if (typeof cleanup === 'function') cleanups.push(cleanup)
+      return () => {}
+    },
+    get: () => undefined,
+    inject(_deps, fn) {
+      fn(ctx)
+    },
+  }
+  return { ctx, listeners, cleanups }
+}
+
+test('apply 订阅 agent 生命周期并注册总清理', () => {
+  const { ctx, listeners, cleanups } = fakeContext()
+  apply(ctx as never, undefined)
+  assert.ok((listeners.get('agent/created') ?? []).length > 0)
+  assert.ok((listeners.get('agent/disposed') ?? []).length > 0)
+  assert.ok(cleanups.length > 0)
+})
+
+test('apply 在宿主没有任何服务时也不抛错', () => {
+  const { ctx } = fakeContext()
+  assert.doesNotThrow(() => apply(ctx as never, undefined))
+})
+
+test('agent/created 缺 tools 服务时只记日志不抛错', async () => {
+  const { ctx, listeners } = fakeContext()
+  apply(ctx as never, undefined)
+  const handlers = listeners.get('agent/created') ?? []
+  for (const handler of handlers) {
+    assert.doesNotThrow(() => handler({ agent: { id: 'a1', ctx: { get: () => undefined } } }))
+  }
+  await new Promise((resolve) => setTimeout(resolve, 10))
+})
