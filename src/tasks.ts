@@ -1,9 +1,10 @@
 /** 任务注册表：一个任务 = 一个文档身份 + 一个 MCP 实例，绑定到发起打开的会话。 */
 
 import { constants, existsSync } from 'node:fs'
-import { copyFile, mkdir, rm, stat } from 'node:fs/promises'
+import { copyFile, mkdir, readdir, rm, stat } from 'node:fs/promises'
 import { basename, join, relative, resolve } from 'node:path'
 import { createCheckpoint, type Checkpoint } from './checkpoint.js'
+import { cleanupWorkspace, type CleanupDecision } from './cleanup.js'
 import type { ConfigData } from './config.js'
 import { pickDeliveryTarget, type Delivery } from './deliver.js'
 import { DomainError } from './errors.js'
@@ -12,7 +13,7 @@ import type { MountHandle, MountSpec } from './mount.js'
 import { sha256File, type ResolvedDoc } from './paths.js'
 import { replaceOriginal } from './replace.js'
 import { planRoot, type RootKind, type RootPlan } from './root.js'
-import { appendCheckpoint, appendDelivery, createWorkspace, type TaskLedger } from './workspace.js'
+import { appendCheckpoint, appendDelivery, createWorkspace, readLedger, type TaskLedger } from './workspace.js'
 
 /** 交付中转目录：先导出到 root 内的这里，再用独占复制搬到用户指定的目录。 */
 const STAGING_DIR = '.deliver'
@@ -57,6 +58,7 @@ export type TaskRegistryDeps = {
   home?: string
   recycle?: (path: string) => Promise<void>
   replaceFile?: typeof replaceOriginal
+  cleanupWorkspace?: (opts: Parameters<typeof cleanupWorkspace>[0]) => Promise<CleanupDecision>
   logger?: (message: string, error?: unknown) => void
 }
 
@@ -65,7 +67,7 @@ export type TaskRegistry = {
   checkpoint(sessionId: string, taskId: string): Promise<Checkpoint>
   deliver(sessionId: string, taskId: string, input?: { dir?: string }): Promise<Delivery>
   replace(sessionId: string, taskId: string, input?: { confirm?: boolean }): Promise<ReplaceOutcome>
-  close(scope: unknown, sessionId: string, taskId: string): Promise<void>
+  close(scope: unknown, sessionId: string, taskId: string, input?: { discard?: boolean }): Promise<void>
   closeSession(sessionId: string): Promise<void>
   get(sessionId: string, taskId: string): TaskRecord
   list(sessionId: string): TaskRecord[]
@@ -98,7 +100,34 @@ export function createTaskRegistry(deps: TaskRegistryDeps): TaskRegistry {
     return entry
   }
 
-  async function disposeEntry(entry: Entry): Promise<void> {
+  async function listWorkspaceFiles(dir: string): Promise<readonly string[]> {
+    const found = await readdir(dir, { recursive: true, withFileTypes: true })
+    return found
+      .filter(item => item.isFile())
+      .map(item => relative(dir, join(item.parentPath, item.name)))
+  }
+
+  /** 工作文件夹只在「已交付」或「用户放弃草稿」且没有未登记文件时才删。 */
+  async function maybeCleanup(entry: Entry, discard: boolean | undefined): Promise<void> {
+    const dir = entry.record.workspaceDir
+    if (dir === null) return
+    const cleanup = deps.cleanupWorkspace ?? cleanupWorkspace
+    try {
+      await cleanup({
+        mode: deps.config().cleanupMode,
+        dir,
+        discard,
+        readLedger,
+        listFiles: listWorkspaceFiles,
+        removeDir: target => rm(target, { recursive: true, force: true }),
+        logger: deps.logger,
+      })
+    } catch (error) {
+      deps.logger?.(`清理工作文件夹时出错：${dir}`, error)
+    }
+  }
+
+  async function disposeEntry(entry: Entry, discard?: boolean): Promise<void> {
     entries.delete(entry.record.taskId)
     try {
       await entry.handle.dispose()
@@ -110,6 +139,7 @@ export function createTaskRegistry(deps: TaskRegistryDeps): TaskRegistry {
         deps.logger?.(`清理临时目录失败：${entry.tempDir}`, error)
       })
     }
+    await maybeCleanup(entry, discard)
   }
 
   async function openInMcp(
@@ -373,8 +403,8 @@ export function createTaskRegistry(deps: TaskRegistryDeps): TaskRegistry {
       }
     },
 
-    async close(_scope, sessionId, taskId) {
-      await disposeEntry(lookup(sessionId, taskId))
+    async close(_scope, sessionId, taskId, input) {
+      await disposeEntry(lookup(sessionId, taskId), input?.discard)
     },
 
     async closeSession(sessionId) {

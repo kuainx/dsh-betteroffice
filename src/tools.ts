@@ -182,17 +182,22 @@ export function createToolDefinitions(deps: ToolDeps): ToolDefinition[] {
 
   const close: ToolDefinition = {
     name: 'betteroffice_close',
-    description: '关闭任务并释放它的 MCP 实例与临时目录。之后该任务的 mcp__bo_* 工具不再可用。',
+    description:
+      '关闭任务并释放它的 MCP 实例与临时目录。之后该任务的 mcp__bo_* 工具不再可用。用户放弃草稿（不需要交付）时带 discard:true，只有这样工作文件夹才可能在没交付的情况下被清理。',
     parameters: {
       type: 'object',
-      properties: { task: { type: 'string', description: 'betteroffice_open 返回的 taskId' } },
+      properties: {
+        task: { type: 'string', description: 'betteroffice_open 返回的 taskId' },
+        discard: { type: 'boolean', description: '用户明确放弃这份草稿、不要交付物时为 true' },
+      },
       required: ['task'],
       additionalProperties: false,
     },
     output: { schema: OUTPUT_SCHEMA, render: renderJson },
     async execute(args) {
       const taskId = requiredString(args, 'task', '任务 id')
-      await deps.registry.close(deps.scope, deps.sessionId, taskId)
+      const discard = args['discard'] === true
+      await deps.registry.close(deps.scope, deps.sessionId, taskId, { discard })
       return { taskId, status: 'closed' }
     },
   }

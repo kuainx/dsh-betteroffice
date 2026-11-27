@@ -171,3 +171,36 @@ test('临时目录编辑的检查点落在临时目录 checkpoints/ 下且不记
   assert.equal(dirname(saved.path), join(tempDir, 'checkpoints'))
   assert.ok(existsSync(saved.path))
 })
+
+test('关闭任务时把清理设置与 discard 交给清理逻辑，且只在有工作文件夹时调用', async () => {
+  const calls: unknown[] = []
+  const { reg } = harness({
+    config: () => ({ workspaceMode: 'always', cleanupMode: 'on', nodePath: '', runtimeVersion: '' }),
+    cleanupWorkspace: async opts => {
+      calls.push(opts)
+      return { remove: true, reason: '测试' }
+    },
+  })
+  const cwd = await mkdtemp(join(tmpdir(), 'bo-clean-'))
+  const task = await reg.open({}, 's1', { path: 'a.docx', cwd, mode: 'edit' })
+  await reg.close({}, 's1', task.taskId, { discard: true })
+  assert.equal(calls.length, 1)
+  const opts = calls[0] as { mode: string; dir: string; discard?: boolean }
+  assert.equal(opts.mode, 'on')
+  assert.equal(opts.dir, task.workspaceDir)
+  assert.equal(opts.discard, true)
+})
+
+test('编辑但不建工作文件夹时关闭任务不触发清理', async () => {
+  const calls: unknown[] = []
+  const { reg } = harness({
+    makeTempDir: async () => mkdtemp(join(tmpdir(), 'bo-noclean-')),
+    cleanupWorkspace: async opts => {
+      calls.push(opts)
+      return { remove: true, reason: '测试' }
+    },
+  })
+  const task = await reg.open({}, 's1', { path: 'a.docx', cwd: 'C:/d', mode: 'edit' })
+  await reg.close({}, 's1', task.taskId)
+  assert.deepEqual(calls, [])
+})

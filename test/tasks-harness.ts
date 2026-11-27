@@ -73,6 +73,7 @@ export function harness(
       recycled: true
       backupPath: string
     }>
+    cleanupWorkspace?: (opts: unknown) => Promise<{ remove: boolean; reason: string }>
   } = {},
 ) {
   const mounted: string[] = []
@@ -115,6 +116,7 @@ export function harness(
     home: options.home ?? 'C:/h',
     recycle: options.recycle ?? (async () => {}),
     ...(options.replaceFile === undefined ? {} : { replaceFile: options.replaceFile as never }),
+    ...(options.cleanupWorkspace === undefined ? {} : { cleanupWorkspace: options.cleanupWorkspace as never }),
   })
   return { reg, mounted, disposed, copies }
 }
