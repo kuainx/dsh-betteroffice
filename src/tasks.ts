@@ -1,8 +1,10 @@
 /** 任务注册表：一个任务 = 一个文档身份 + 一个 MCP 实例，绑定到发起打开的会话。 */
 
-import { rm } from 'node:fs/promises'
+import { copyFile, rm } from 'node:fs/promises'
+import { join, relative } from 'node:path'
 import type { ConfigData } from './config.js'
 import { DomainError } from './errors.js'
+import { createToolInvoker, readToolJson, waitForTool, type ToolView } from './invoke.js'
 import type { MountHandle, MountSpec } from './mount.js'
 import type { ResolvedDoc } from './paths.js'
 import { planRoot, type RootKind, type RootPlan } from './root.js'
@@ -14,6 +16,8 @@ export type TaskRecord = {
   sessionId: string
   serverName: string
   doc: ResolvedDoc
+  documentId: string
+  openedPath: string
   root: string
   rootKind: RootKind
   readOnly: boolean
@@ -31,6 +35,9 @@ export type TaskRegistryDeps = {
   now: () => Date
   newTaskId: () => string
   resolveDocument: (path: string, cwd: string) => Promise<ResolvedDoc>
+  toolViewFor?: (scope: unknown) => ToolView | undefined
+  copyFile?: (from: string, to: string) => Promise<void>
+  waitToolTimeoutMs?: number
   logger?: (message: string, error?: unknown) => void
 }
 
@@ -65,6 +72,33 @@ export function createTaskRegistry(deps: TaskRegistryDeps): TaskRegistry {
       await rm(entry.tempDir, { recursive: true, force: true }).catch((error: unknown) => {
         deps.logger?.(`清理临时目录失败：${entry.tempDir}`, error)
       })
+    }
+  }
+
+  async function openInMcp(
+    scope: unknown,
+    serverName: string,
+    root: string,
+    openedPath: string,
+    rollback: () => Promise<void>,
+  ): Promise<string> {
+    const tools = deps.toolViewFor?.(scope)
+    if (tools === undefined) return ''
+    const toolName = `mcp__${serverName}__office_open`
+    try {
+      await waitForTool(tools, scope, toolName, { timeoutMs: deps.waitToolTimeoutMs ?? 15_000 })
+      const result = await createToolInvoker(tools, scope).invoke(toolName, { path: relative(root, openedPath) })
+      const payload = readToolJson(result) as { document?: unknown } | undefined
+      if (typeof payload?.document !== 'string' || payload.document === '') {
+        throw new DomainError(
+          'open-failed',
+          `文档已挂载，但 BetterOffice 没有返回文档 id：${JSON.stringify(payload ?? result)}`,
+        )
+      }
+      return payload.document
+    } catch (error) {
+      await rollback()
+      throw error
     }
   }
 
@@ -114,11 +148,34 @@ export function createTaskRegistry(deps: TaskRegistryDeps): TaskRegistry {
         throw error
       }
 
+      const rollback = async (): Promise<void> => {
+        await handle.dispose().catch((error: unknown) => {
+          deps.logger?.(`回滚 ${serverName} 时出错`, error)
+        })
+        if (tempDir !== null) await rm(tempDir, { recursive: true, force: true }).catch(() => undefined)
+      }
+
+      // 编辑副本：把源文件复制进临时目录，之后一律只动副本。
+      let openedPath = doc.absPath
+      if (plan.rootKind === 'temp') {
+        openedPath = join(plan.root, doc.name)
+        try {
+          await (deps.copyFile ?? copyFile)(doc.absPath, openedPath)
+        } catch (error) {
+          await rollback()
+          throw new DomainError('copy-failed', `复制文档到临时目录失败：${openedPath}（${String(error)}）`)
+        }
+      }
+
+      const documentId = await openInMcp(scope, serverName, plan.root, openedPath, rollback)
+
       const record: TaskRecord = {
         taskId,
         sessionId,
         serverName,
         doc,
+        documentId,
+        openedPath,
         root: plan.root,
         rootKind: plan.rootKind,
         readOnly: plan.readOnly,

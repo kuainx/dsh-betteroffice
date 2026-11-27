@@ -49,6 +49,7 @@ export type TaskView = {
   taskId: string
   serverName: string
   document: string
+  openedPath: string
   root: string
   rootKind: string
   readOnly: boolean
@@ -60,7 +61,8 @@ function view(task: TaskRecord): TaskView {
   return {
     taskId: task.taskId,
     serverName: task.serverName,
-    document: task.doc.absPath,
+    document: task.documentId,
+    openedPath: task.openedPath,
     root: task.root,
     rootKind: task.rootKind,
     readOnly: task.readOnly,

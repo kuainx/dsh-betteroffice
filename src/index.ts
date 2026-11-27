@@ -1,4 +1,4 @@
-﻿import { randomBytes } from 'node:crypto'
+import { randomBytes } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -10,6 +10,7 @@ import { createMounter, type McpClientModule } from './mount.js'
 import { resolveDocumentPath } from './paths.js'
 import { resolveMcpRuntime } from './runtime.js'
 import { createTaskRegistry, type TaskRegistry } from './tasks.js'
+import type { ToolView } from './invoke.js'
 import { registerTools, type ToolDefinition } from './tools.js'
 
 export const name = 'betteroffice'
@@ -82,6 +83,14 @@ export function apply(ctx: Context, config?: ConfigData): void {
     },
   })
 
+  /** 先看 agent 自己的 scope，再退到根 ctx：MCP 工具挂在 agent.ctx 那一层。 */
+  function toolBag(scope: unknown): ToolView | undefined {
+    const bag =
+      (scope as { get?: (name: string) => unknown } | undefined)?.get?.('tools') ?? host.get('tools')
+    if (bag === undefined || typeof (bag as ToolView).view !== 'function') return undefined
+    return bag as ToolView
+  }
+
   const registry: TaskRegistry = createTaskRegistry({
     mounter,
     config: currentConfig,
@@ -98,6 +107,7 @@ export function apply(ctx: Context, config?: ConfigData): void {
     now: () => new Date(),
     newTaskId: () => randomBytes(4).toString('hex'),
     resolveDocument: resolveDocumentPath,
+    toolViewFor: toolBag,
     logger: log,
   })
 
