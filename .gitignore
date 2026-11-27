@@ -1,0 +1,6 @@
+node_modules/
+lib/
+*.tgz
+.scratch/
+.acl-recovery/
+.superpowers/
