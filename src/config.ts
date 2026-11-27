@@ -24,7 +24,7 @@ export const Config = z.object({
   runtimeVersion: z
     .string()
     .default('')
-    .description('要使用的 betteroffice-mcp 私有版本（留空使用默认版本）')
+    .description('要使用的 betteroffice-mcp 私有版本（由 /betteroffice 安装、更新、回退写入；留空表示尚未安装）')
     .volatile(),
 })
 

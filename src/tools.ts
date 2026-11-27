@@ -1,4 +1,4 @@
-/** 暴露给 agent 的 5 个任务级工具。路径只在 open 时出现，其余都用任务 id。 */
+/** 暴露给 agent 的 6 个任务级工具。路径只在 open 时出现，其余都用任务 id。 */
 
 import type { ConfigData } from './config.js'
 import { DomainError } from './errors.js'

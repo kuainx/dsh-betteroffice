@@ -97,14 +97,14 @@ export function resolveMcpRuntime(input: ResolveRuntimeInput): RuntimeResolution
   const version = config.runtimeVersion.trim()
   if (version === '') {
     throw new RuntimeUnavailableError(
-      '未安装 BetterOffice MCP 运行时。请打开 设置 → 插件配置 → BetterOffice，点击「安装」。',
+      '未安装 BetterOffice MCP 运行时。请在对话里发送 /betteroffice 安装。',
     )
   }
 
   const cliPath = cliPathFor(home, version)
   if (!exists(cliPath)) {
     throw new RuntimeUnavailableError(
-      `BetterOffice MCP 运行时 ${version} 的文件缺失（${cliPath}）。请到 设置 → 插件配置 → BetterOffice 重新安装。`,
+      `BetterOffice MCP 运行时 ${version} 的文件缺失（${cliPath}）。请发送 /betteroffice 安装 ${version} 重新安装。`,
     )
   }
 
