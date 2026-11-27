@@ -9,6 +9,7 @@ export const TOOL_NAMES = [
   'betteroffice_list',
   'betteroffice_checkpoint',
   'betteroffice_deliver',
+  'betteroffice_replace',
   'betteroffice_close',
 ] as const
 
@@ -156,6 +157,29 @@ export function createToolDefinitions(deps: ToolDeps): ToolDefinition[] {
     },
   }
 
+  const replace: ToolDefinition = {
+    name: 'betteroffice_replace',
+    description:
+      '把草稿替换成源文件本体：原件先移入回收站（可还原），再把草稿发布到原路径并校验。' +
+      '只在用户明确要求"就改这个文件"时使用；必须先把 confirm 设为 true，宿主还会再弹一次确认。' +
+      '平台不支持回收站时不会退化成永久删除，而是直接失败并建议改用 betteroffice_deliver。',
+    parameters: {
+      type: 'object',
+      properties: {
+        task: { type: 'string', description: 'betteroffice_open 返回的 taskId' },
+        confirm: { type: 'boolean', description: '用户已明确同意替换原文件时必须为 true' },
+      },
+      required: ['task', 'confirm'],
+      additionalProperties: false,
+    },
+    output: { schema: OUTPUT_SCHEMA, render: renderJson },
+    async execute(args) {
+      const taskId = requiredString(args, 'task', '任务 id')
+      const confirm = args['confirm'] === true
+      return await deps.registry.replace(deps.sessionId, taskId, { confirm })
+    },
+  }
+
   const close: ToolDefinition = {
     name: 'betteroffice_close',
     description: '关闭任务并释放它的 MCP 实例与临时目录。之后该任务的 mcp__bo_* 工具不再可用。',
@@ -173,7 +197,7 @@ export function createToolDefinitions(deps: ToolDeps): ToolDefinition[] {
     },
   }
 
-  return [open, list, checkpoint, deliver, close]
+  return [open, list, checkpoint, deliver, replace, close]
 }
 
 export function registerTools(

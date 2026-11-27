@@ -20,6 +20,7 @@ function makeRegistry(overrides: Partial<TaskRegistry> = {}): TaskRegistry {
     open: async () => record,
     checkpoint: async () => ({ name: 'cp', path: 'C:/d/checkpoints/cp.docx', size: 1, sha256: 's', createdAt: '' }),
     deliver: async () => ({ taskId: 't1', name: 'a.docx', path: 'C:/d/a.docx', size: 1, sha256: 's', createdAt: '' }),
+    replace: async () => ({ taskId: 't1', path: 'C:/d/a.docx', sha256: 's', bytes: 1 }),
     close: async () => {},
     closeSession: async () => {},
     get: () => record,
@@ -30,7 +31,7 @@ function makeRegistry(overrides: Partial<TaskRegistry> = {}): TaskRegistry {
 
 const cfg = () => ({ workspaceMode: 'auto', cleanupMode: 'auto', nodePath: '', runtimeVersion: '' }) as const
 
-test('定义 5 个工具且每个都带可渲染的 output', () => {
+test('定义 6 个工具且每个都带可渲染的 output', () => {
   const defs = createToolDefinitions({ registry: makeRegistry(), sessionId: 's1', config: cfg })
   assert.deepEqual(
     defs.map((definition) => definition.name),
@@ -52,6 +53,24 @@ test('open 工具返回含任务 id 的文本', async () => {
   const blocks = open.output.render({ path: 'a.docx' }, value)
   assert.match(JSON.stringify(blocks), /a71c2e90/)
   assert.equal(blocks[0]?.type, 'text')
+})
+
+test('replace 只有 confirm 为 true 才算用户同意', async () => {
+  const calls: { taskId: string; confirm?: boolean }[] = []
+  const registry = makeRegistry({
+    replace: async (_sessionId, taskId, input) => {
+      calls.push({ taskId, confirm: input?.confirm })
+      return { taskId, path: 'C:/d/a.docx', sha256: 's', bytes: 1 }
+    },
+  })
+  const defs = createToolDefinitions({ registry, sessionId: 's1', config: cfg })
+  const replace = defs.find((definition) => definition.name === 'betteroffice_replace')!
+  await replace.execute({ task: 't1', confirm: 'yes' }, undefined)
+  await replace.execute({ task: 't1', confirm: true }, undefined)
+  assert.deepEqual(calls, [
+    { taskId: 't1', confirm: false },
+    { taskId: 't1', confirm: true },
+  ])
 })
 
 test('close 把会话不匹配的错误原样暴露给模型', async () => {

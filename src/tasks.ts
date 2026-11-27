@@ -10,6 +10,7 @@ import { DomainError } from './errors.js'
 import { createToolInvoker, readToolJson, waitForTool, type ToolView } from './invoke.js'
 import type { MountHandle, MountSpec } from './mount.js'
 import { sha256File, type ResolvedDoc } from './paths.js'
+import { replaceOriginal } from './replace.js'
 import { planRoot, type RootKind, type RootPlan } from './root.js'
 import { appendCheckpoint, appendDelivery, createWorkspace, type TaskLedger } from './workspace.js'
 
@@ -38,6 +39,8 @@ export type TaskRecord = {
 
 type Entry = { record: TaskRecord; handle: MountHandle; tempDir: string | null; scope: unknown }
 
+export type ReplaceOutcome = { taskId: string; path: string; sha256: string; bytes: number }
+
 export type TaskRegistryDeps = {
   mounter: { mount(scope: unknown, spec: MountSpec): Promise<MountHandle> }
   resolveRuntime: () => { command: string; cliPath: string }
@@ -51,6 +54,9 @@ export type TaskRegistryDeps = {
   copyExcl?: (from: string, to: string) => Promise<void>
   createWorkspaceDir?: typeof createWorkspace
   waitToolTimeoutMs?: number
+  home?: string
+  recycle?: (path: string) => Promise<void>
+  replaceFile?: typeof replaceOriginal
   logger?: (message: string, error?: unknown) => void
 }
 
@@ -58,6 +64,7 @@ export type TaskRegistry = {
   open(scope: unknown, sessionId: string, input: OpenInput): Promise<TaskRecord>
   checkpoint(sessionId: string, taskId: string): Promise<Checkpoint>
   deliver(sessionId: string, taskId: string, input?: { dir?: string }): Promise<Delivery>
+  replace(sessionId: string, taskId: string, input?: { confirm?: boolean }): Promise<ReplaceOutcome>
   close(scope: unknown, sessionId: string, taskId: string): Promise<void>
   closeSession(sessionId: string): Promise<void>
   get(sessionId: string, taskId: string): TaskRecord
@@ -310,6 +317,57 @@ export function createTaskRegistry(deps: TaskRegistryDeps): TaskRegistry {
           })
         }
         return delivery
+      } finally {
+        await rm(stagingDir, { recursive: true, force: true }).catch(() => undefined)
+      }
+    },
+
+    async replace(sessionId, taskId, input) {
+      const entry = lookup(sessionId, taskId)
+      const { record } = entry
+      if (input?.confirm !== true) {
+        throw new DomainError(
+          'confirm-required',
+          '替换原文件必须先得到用户同意：先向用户说明这一点，用户明确同意后再带 confirm:true 重试。',
+        )
+      }
+      if (record.readOnly) {
+        throw new DomainError('replace-failed', '只读任务不能替换原文件；请用 mode:"edit" 打开后再改。')
+      }
+      if (deps.home === undefined) {
+        throw new DomainError('replace-failed', '插件没有拿到 DSH 主目录，无法安全记录替换事务。')
+      }
+      const recycle = deps.recycle
+      if (recycle === undefined) {
+        throw new DomainError('recycle-unavailable', '没有可用的回收站实现，只能另存为新文件。')
+      }
+      const tools = deps.toolViewFor?.(entry.scope)
+      if (tools === undefined) {
+        throw new DomainError('replace-failed', '宿主没有提供工具视图，无法导出草稿')
+      }
+      const stagingDir = join(record.root, STAGING_DIR)
+      const candidate = join(stagingDir, record.doc.name)
+      try {
+        await mkdir(stagingDir, { recursive: true })
+        await rm(candidate, { force: true })
+        const relativePath = relative(record.root, candidate).split('\\').join('/')
+        await createToolInvoker(tools, entry.scope).invoke(
+          `mcp__${record.serverName}__office_export`,
+          { document: record.documentId, path: relativePath },
+        )
+        await stat(candidate).catch(() => {
+          throw new DomainError('replace-failed', `BetterOffice 没有写出草稿：${candidate}`)
+        })
+        const result = await (deps.replaceFile ?? replaceOriginal)(
+          {
+            taskId,
+            sourcePath: record.doc.absPath,
+            candidatePath: candidate,
+            expectedSourceSha256: record.doc.sha256,
+          },
+          { home: deps.home, recycle },
+        )
+        return { taskId, path: result.path, sha256: result.sha256, bytes: result.bytes }
       } finally {
         await rm(stagingDir, { recursive: true, force: true }).catch(() => undefined)
       }

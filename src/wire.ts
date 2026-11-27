@@ -35,6 +35,34 @@ export function runNpm(command: string, args: string[], options: { cwd: string }
   })
 }
 
+/** 用 `powershell.exe` 跑一次性脚本：回收站适配器要读 stdout 里的 JSON。 */
+export function runPowershell(
+  command: string,
+  args: readonly string[],
+  options: { env: Record<string, string> },
+): Promise<{ code: number; stderr: string; stdout: string }> {
+  return new Promise(resolve => {
+    const child = spawnPortable(command, [...args], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: { ...process.env, ...options.env },
+    })
+    let stdout = ''
+    let stderr = ''
+    child.stdout?.on('data', chunk => {
+      stdout += String(chunk)
+    })
+    child.stderr?.on('data', chunk => {
+      stderr += String(chunk)
+    })
+    child.on('error', error => {
+      resolve({ code: -1, stderr: `${stderr}\n${error.message}`, stdout })
+    })
+    child.on('close', code => {
+      resolve({ code: code ?? -1, stderr, stdout })
+    })
+  })
+}
+
 /** 把真实宿主能力接成 `/betteroffice` 命令需要的依赖。 */
 export function createCommandDeps(options: WireOptions): CommandDeps {
   const installer = createInstaller({

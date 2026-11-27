@@ -97,6 +97,63 @@ test('检查点落在工作文件夹 checkpoints/ 下并写进台账', async () 
   assert.deepEqual(ledger.checkpoints?.map((cp) => cp.name), [saved.name])
 })
 
+test('替换原文件前必须有 confirm，否则不导出也不动原件', async () => {
+  const tools = fakeTools()
+  const { reg, disposed } = harness({ tools: tools.view })
+  const task = await reg.open({}, 's1', { path: 'a.docx', cwd: 'C:/d', mode: 'edit' })
+  await assert.rejects(
+    () => reg.replace('s1', task.taskId, {}),
+    (error: never) => (error as { code?: string }).code === 'confirm-required',
+  )
+  assert.deepEqual(tools.calls, [{ name: 'mcp__bo_a71c2e90__office_open', args: { path: 'a.docx' } }])
+  assert.deepEqual(disposed, [])
+})
+
+test('confirm 为 true 时先导出草稿到中转目录再交给替换事务', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'bo-rep-'))
+  const tools = exportingTools({ root })
+  const replaced: { input: unknown; home: string; hasRecycle: boolean }[] = []
+  const { reg } = harness({
+    tools: tools.view,
+    makeTempDir: async () => root,
+    home: root,
+    replaceFile: async (input, deps) => {
+      const bag = deps as { home: string; recycle: unknown }
+      replaced.push({ input, home: bag.home, hasRecycle: typeof bag.recycle === 'function' })
+      return { path: 'C:/d/a.docx', sha256: 'sha256:new', bytes: 14, recycled: true as const, backupPath: 'C:/h/b.docx' }
+    },
+  })
+  const task = await reg.open({}, 's1', { path: 'a.docx', cwd: 'C:/d', mode: 'edit' })
+  const outcome = await reg.replace('s1', task.taskId, { confirm: true })
+
+  const staging = join(root, '.deliver', 'a.docx')
+  assert.deepEqual(tools.calls.at(-1), {
+    name: 'mcp__bo_a71c2e90__office_export',
+    args: { document: 'doc1', path: '.deliver/a.docx' },
+  })
+  assert.deepEqual(replaced.map((item) => item.input), [
+    {
+      taskId: task.taskId,
+      sourcePath: 'C:/d/a.docx',
+      candidatePath: staging,
+      expectedSourceSha256: 'sha256:x',
+    },
+  ])
+  assert.equal(replaced[0]?.home, root)
+  assert.equal(replaced[0]?.hasRecycle, true)
+  assert.deepEqual(outcome, { taskId: task.taskId, path: 'C:/d/a.docx', sha256: 'sha256:new', bytes: 14 })
+  assert.equal(existsSync(join(root, '.deliver')), false)
+})
+
+test('只读任务不允许替换原文件', async () => {
+  const { reg } = harness()
+  const task = await reg.open({}, 's1', { path: 'a.docx', cwd: 'C:/d' })
+  await assert.rejects(
+    () => reg.replace('s1', task.taskId, { confirm: true }),
+    (error: never) => (error as { code?: string }).code === 'replace-failed',
+  )
+})
+
 test('临时目录编辑的检查点落在临时目录 checkpoints/ 下且不记账', async () => {
   const holder = { root: '' }
   const tools = exportingTools(holder)

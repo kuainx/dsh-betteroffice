@@ -10,10 +10,12 @@ import { createBetterOfficeCommand, type CommandApi } from './commands.js'
 import { createMounter, type McpClientModule } from './mount.js'
 import { resolveDocumentPath } from './paths.js'
 import { resolveMcpRuntime } from './runtime.js'
+import { recycleFile } from './recycle.js'
+import { recoverCommits } from './recovery.js'
 import { createTaskRegistry, type TaskRegistry } from './tasks.js'
 import type { ToolView } from './invoke.js'
 import { registerTools, type ToolDefinition } from './tools.js'
-import { createCommandDeps } from './wire.js'
+import { createCommandDeps, runPowershell } from './wire.js'
 
 export const name = 'betteroffice'
 
@@ -96,6 +98,18 @@ export function apply(ctx: Context, config?: ConfigData): void {
     return bag as ToolView
   }
 
+  // 替换原文件不可逆：参数里的 confirm 之外，再走一次宿主审批弹窗，用户点同意才真的动原件。
+  host.on(
+    'tools/pre-execute',
+    ((execution: { name?: string }, next: () => unknown) => {
+      if (execution?.name !== 'betteroffice_replace') return next()
+      return {
+        kind: 'ask',
+        reason: 'BetterOffice 要把这个文档的原件移入回收站，再用草稿替换它。确认继续？',
+      }
+    }) as (...args: unknown[]) => void,
+  )
+
   const registry: TaskRegistry = createTaskRegistry({
     mounter,
     config: currentConfig,
@@ -113,7 +127,15 @@ export function apply(ctx: Context, config?: ConfigData): void {
     newTaskId: () => randomBytes(4).toString('hex'),
     resolveDocument: resolveDocumentPath,
     toolViewFor: toolBag,
+    home: dshHome(),
+    // 回收站是平台能力：非 Windows 上这里会以 recycle-unavailable 结束，工具不会退化成永久删除。
+    recycle: path => recycleFile(path, { run: runPowershell }),
     logger: log,
+  })
+
+  // 上次替换如果中断在半路，启动时按事务日志还原或收尾。
+  void recoverCommits({ home: dshHome(), logger: log }).catch((error: unknown) => {
+    log('检查未完成的替换事务失败', error)
   })
 
   const sessionIds = new Set<string>()

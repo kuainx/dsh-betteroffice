@@ -45,6 +45,26 @@ test('apply 在宿主没有任何服务时也不抛错', () => {
   assert.doesNotThrow(() => apply(ctx as never, undefined))
 })
 
+test('替换工具在 pre-execute 阶段要求宿主审批，其他工具放行', () => {
+  const { ctx, listeners } = fakeContext()
+  apply(ctx as never, undefined)
+  const hook = (listeners.get('tools/pre-execute') ?? [])[0]
+  assert.ok(hook !== undefined)
+  let passed = false
+  const other = hook({ name: 'betteroffice_deliver' }, () => {
+    passed = true
+    return 'next'
+  })
+  assert.equal(other, 'next')
+  assert.equal(passed, true)
+  const decision = hook({ name: 'betteroffice_replace' }, () => 'next') as unknown as {
+    kind: string
+    reason: string
+  }
+  assert.equal(decision.kind, 'ask')
+  assert.match(decision.reason, /回收站/)
+})
+
 test('agent/created 缺 tools 服务时只记日志不抛错', async () => {
   const { ctx, listeners } = fakeContext()
   apply(ctx as never, undefined)

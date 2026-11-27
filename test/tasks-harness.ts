@@ -64,6 +64,15 @@ export function harness(
     copyFile?: (from: string, to: string) => Promise<void>
     makeTempDir?: () => Promise<string>
     config?: () => ConfigData
+    home?: string
+    recycle?: (path: string) => Promise<void>
+    replaceFile?: (input: unknown, deps: unknown) => Promise<{
+      path: string
+      sha256: string
+      bytes: number
+      recycled: true
+      backupPath: string
+    }>
   } = {},
 ) {
   const mounted: string[] = []
@@ -103,6 +112,9 @@ export function harness(
       copies.push(`${from}->${to}`)
       await options.copyFile?.(from, to)
     },
+    home: options.home ?? 'C:/h',
+    recycle: options.recycle ?? (async () => {}),
+    ...(options.replaceFile === undefined ? {} : { replaceFile: options.replaceFile as never }),
   })
   return { reg, mounted, disposed, copies }
 }
