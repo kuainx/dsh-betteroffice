@@ -1,4 +1,5 @@
 import z from '@deepseek-ai/schemastery'
+import { plainConfig } from '@hyzyn/dsh-kit'
 
 /**
  * 插件配置。字段全部 volatile：DSH 的设置机制只允许更新 volatile 字段，
@@ -32,4 +33,26 @@ export type ConfigData = {
   cleanupMode: 'off' | 'auto' | 'on'
   nodePath: string
   runtimeVersion: string
+}
+
+/**
+ * 把宿主给的（可能是 volatile 引用的）配置解析成普通对象：补齐默认值、校验枚举。
+ * 宿主传入非法值时给出中文报错而不是让 schemastery 的栈冒到用户面前。
+ */
+export function resolveConfig(raw: unknown): ConfigData {
+  let parsed: unknown
+  try {
+    // volatile 字段解析成 { get() } 引用，必须再拆一层才是普通值。
+    parsed = plainConfig(Config(raw as never) as unknown)
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error)
+    throw new TypeError(`betteroffice 配置无效：${detail}`)
+  }
+  const value = parsed as Partial<ConfigData>
+  return {
+    workspaceMode: value.workspaceMode ?? 'auto',
+    cleanupMode: value.cleanupMode ?? 'auto',
+    nodePath: value.nodePath ?? '',
+    runtimeVersion: value.runtimeVersion ?? '',
+  }
 }
