@@ -4,6 +4,16 @@
 > 用户决定（本次）：回收站用 **PowerShell 5.1 + Microsoft.VisualBasic `SendToRecycleBin`**，确认用 **Shell 命名空间**；
 > 替换前必须 **agent 显式 `confirm:true` + 宿主 approval 弹窗** 两道关。
 
+## 进度
+
+T26–T31 全部完成，测试 125 条全绿。落地时的三处补充（计划里没写细）：
+
+1. **发布原语**：用 `fs.link(candidate, sourcePath)`，目标存在即 `EEXIST` 失败——这是真正的"不覆盖"，比"先查路径再改名"安全；发布后删候选。
+2. **恢复副本与日志**：`<home>/betteroffice/backups/<taskId><ext>` 与 `<home>/betteroffice/commits/<taskId>.json`，日志先写 `.tmp` 再 `rename`，阶段 `prepared → recycled → published` 逐段落盘。
+3. **启动恢复**：`apply()` 里 `recoverCommits()` 一次性收尾上次没做完的事务；结果分 `cleared / restored / kept`，`kept` 表示需要人工看一眼（日志故意保留）。
+
+真实冒烟（`.scratch/e2e/replace-smoke.mjs`，走真回收站）：`elapsedMs 454`、`recycled true`、替换后源文件内容为 `new-bytes-v2`、`sourceSha256Matches true`、候选文件已删、`journalsLeft 0`、目录里没有残留 `.lock`。
+
 ## 0. 前置事实（已在本机实测）
 
 | 事实 | 证据 |
