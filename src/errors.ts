@@ -15,3 +15,21 @@ export class WorkspaceExistsError extends DomainError {
     this.name = 'WorkspaceExistsError'
   }
 }
+
+export class McpUnavailableError extends DomainError {
+  constructor() {
+    super('mcp-unavailable', '宿主没有提供 @deepseek-ai/dsh-mcp-client，无法挂载 BetterOffice MCP')
+    this.name = 'McpUnavailableError'
+  }
+}
+
+export class McpStartFailedError extends DomainError {
+  constructor(serverName: string, cause: unknown) {
+    super('mcp-start-failed', `BetterOffice MCP 启动失败（${serverName}）：${describe(cause)}`)
+    this.name = 'McpStartFailedError'
+  }
+}
+
+function describe(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
+}
