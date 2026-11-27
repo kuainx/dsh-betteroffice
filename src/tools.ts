@@ -137,22 +137,22 @@ export function createToolDefinitions(deps: ToolDeps): ToolDefinition[] {
   const deliver: ToolDefinition = {
     name: 'betteroffice_deliver',
     description:
-      '把当前草稿保存为新文件（交付），默认不覆盖任何已有文件。阶段 1 尚未实现，调用会返回明确说明。',
+      '把当前草稿交付成新文件：默认存到源文件同目录，同名时自动加序号，绝不覆盖任何已有文件。' +
+      '返回落盘文件的真实路径、大小与 sha256。替换源文件不在本工具范围内。',
     parameters: {
       type: 'object',
       properties: {
         task: { type: 'string', description: 'betteroffice_open 返回的 taskId' },
-        target: { type: 'string', description: '交付目标路径（可选，默认源文件同目录的副本）' },
+        dir: { type: 'string', description: '交付目录（可选，默认源文件所在目录）' },
       },
       required: ['task'],
       additionalProperties: false,
     },
     output: { schema: OUTPUT_SCHEMA, render: renderJson },
-    async execute() {
-      return {
-        status: 'not-implemented',
-        message: '交付工具将在阶段 2 提供；当前请用 mcp__ 导出工具显式指定不冲突的路径。',
-      }
+    async execute(args) {
+      const taskId = requiredString(args, 'task', '任务 id')
+      const dir = typeof args['dir'] === 'string' ? args['dir'] : undefined
+      return await deps.registry.deliver(deps.sessionId, taskId, { dir })
     },
   }
 

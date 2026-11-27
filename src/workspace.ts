@@ -3,6 +3,7 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 import type { Checkpoint } from './checkpoint.js'
+import type { Delivery } from './deliver.js'
 import { WorkspaceExistsError } from './errors.js'
 
 export const WORKSPACE_PREFIX = 'dsh-'
@@ -68,6 +69,8 @@ export type TaskLedger = {
   mcpVersion: string
   /** 已验证落盘的检查点，按时间追加；失败候选绝不写进来。 */
   checkpoints?: Checkpoint[]
+  /** 已成功另存出去的交付物。 */
+  deliveries?: Delivery[]
 }
 
 export type WorkspaceDirs = {
@@ -114,9 +117,22 @@ export async function readLedger(dir: string): Promise<TaskLedger> {
 
 /** 检查点落盘并验证之后才记账：台账里的 checkpoints 就是「可信最新版本」的清单。 */
 export async function appendCheckpoint(dir: string, checkpoint: Checkpoint): Promise<TaskLedger> {
-  const ledger = await readLedger(dir)
-  const next: TaskLedger = { ...ledger, checkpoints: [...(ledger.checkpoints ?? []), checkpoint] }
-  const path = join(dir, LEDGER_FILE)
-  await writeFile(path, JSON.stringify(next, null, 2), 'utf8')
+  return patchLedger(dir, (ledger) => ({
+    ...ledger,
+    checkpoints: [...(ledger.checkpoints ?? []), checkpoint],
+  }))
+}
+
+/** 交付成功后记账，供清理与恢复判断「草稿是否已经交出去」。 */
+export async function appendDelivery(dir: string, delivery: Delivery): Promise<TaskLedger> {
+  return patchLedger(dir, (ledger) => ({
+    ...ledger,
+    deliveries: [...(ledger.deliveries ?? []), delivery],
+  }))
+}
+
+async function patchLedger(dir: string, patch: (ledger: TaskLedger) => TaskLedger): Promise<TaskLedger> {
+  const next = patch(await readLedger(dir))
+  await writeFile(join(dir, LEDGER_FILE), JSON.stringify(next, null, 2), 'utf8')
   return next
 }

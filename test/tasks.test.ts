@@ -1,82 +1,12 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { existsSync } from 'node:fs'
-import { mkdtemp } from 'node:fs/promises'
+import { mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
-import { createTaskRegistry } from '../src/tasks.js'
-
-type ToolCall = { name: string; args: unknown }
-
-/** 假的工具视图：只有被点名的那一个 MCP 工具存在。 */
-function fakeTools(behavior: { document?: string; fail?: boolean } = {}) {
-  const calls: ToolCall[] = []
-  const map = (name: string): unknown =>
-    name.startsWith('mcp__')
-      ? {
-          execute: async (args: unknown) => {
-            calls.push({ name, args })
-            if (behavior.fail === true) throw new Error('office_open 失败')
-            return {
-              content: [
-                { type: 'text', text: JSON.stringify({ document: behavior.document ?? 'doc1' }) },
-              ],
-            }
-          },
-        }
-      : undefined
-  const view = { view: () => ({ get: map }) as unknown }
-  return { calls, view }
-}
-
-function harness(
-  options: {
-    failMount?: boolean
-    tools?: unknown
-    copyFile?: (from: string, to: string) => Promise<void>
-    makeTempDir?: () => Promise<string>
-  } = {},
-) {
-  const mounted: string[] = []
-  const disposed: string[] = []
-  const copies: string[] = []
-  const mounter = {
-    mount: async (_scope: unknown, spec: { serverName: string }) => {
-      if (options.failMount === true) throw new Error('spawn 失败')
-      mounted.push(spec.serverName)
-      return {
-        serverName: spec.serverName,
-        dispose: async () => {
-          disposed.push(spec.serverName)
-        },
-      }
-    },
-    has: () => true,
-  }
-  const reg = createTaskRegistry({
-    mounter: mounter as never,
-    resolveRuntime: () => ({ command: 'node', cliPath: 'C:/h/cli.js' }),
-    config: () => ({ workspaceMode: 'never', cleanupMode: 'auto', nodePath: '', runtimeVersion: '' }),
-    makeTempDir: options.makeTempDir ?? (async () => 'C:/tmp/bo-x'),
-    now: () => new Date(2026, 10, 27, 14, 41, 26),
-    newTaskId: () => 'a71c2e90',
-    resolveDocument: async (path: string, cwd: string) => ({
-      absPath: `${cwd}/${path}`,
-      realPath: `${cwd}/${path}`,
-      dir: cwd,
-      name: path,
-      ext: '.docx' as const,
-      size: 1,
-      sha256: 'sha256:x',
-    }),
-    toolViewFor: options.tools === undefined ? undefined : () => options.tools as never,
-    copyFile: async (from: string, to: string) => {
-      copies.push(`${from}->${to}`)
-      await options.copyFile?.(from, to)
-    },
-  })
-  return { reg, mounted, disposed, copies }
-}
+import { dirname, join } from 'node:path'
+import { sha256File } from '../src/paths.js'
+import { readLedger } from '../src/workspace.js'
+import { exportingTools, fakeTools, harness } from './tasks-harness.js'
 
 test('只读打开挂载 bo_<id8> 且返回任务', async () => {
   const { reg, mounted } = harness()
@@ -145,28 +75,6 @@ test('office_open 失败时卸载挂载、删掉临时目录、不留记录', as
   assert.deepEqual(reg.list('s1'), [])
   assert.equal(existsSync(tempDir), false)
 })
-
-/** 假 MCP：office_open 返回固定 id，office_export 真的把文件写到 root 下。 */
-function exportingTools(holder: { root: string }) {
-  const calls: ToolCall[] = []
-  const view = {
-    view: () => ({
-      get: (name: string) => ({
-        execute: async (args: Record<string, unknown>) => {
-          calls.push({ name, args })
-          if (name.endsWith('__office_export')) {
-            const target = join(holder.root, String(args['path']))
-            await mkdir(dirname(target), { recursive: true })
-            await writeFile(target, 'exported-bytes')
-            return { content: [{ type: 'text', text: '{}' }] }
-          }
-          return { content: [{ type: 'text', text: JSON.stringify({ document: 'doc1' }) }] }
-        },
-      }),
-    }),
-  }
-  return { view, calls }
-}
 
 test('检查点落在工作文件夹 checkpoints/ 下并写进台账', async () => {
   const source = await mkdtemp(join(tmpdir(), 'bo-cp-'))

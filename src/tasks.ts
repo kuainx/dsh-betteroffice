@@ -1,16 +1,24 @@
 /** 任务注册表：一个任务 = 一个文档身份 + 一个 MCP 实例，绑定到发起打开的会话。 */
 
-import { existsSync } from 'node:fs'
+import { constants, existsSync } from 'node:fs'
 import { copyFile, mkdir, rm, stat } from 'node:fs/promises'
-import { join, relative } from 'node:path'
+import { basename, join, relative, resolve } from 'node:path'
 import { createCheckpoint, type Checkpoint } from './checkpoint.js'
 import type { ConfigData } from './config.js'
+import { pickDeliveryTarget, type Delivery } from './deliver.js'
 import { DomainError } from './errors.js'
 import { createToolInvoker, readToolJson, waitForTool, type ToolView } from './invoke.js'
 import type { MountHandle, MountSpec } from './mount.js'
 import { sha256File, type ResolvedDoc } from './paths.js'
 import { planRoot, type RootKind, type RootPlan } from './root.js'
-import { appendCheckpoint, createWorkspace, type TaskLedger } from './workspace.js'
+import { appendCheckpoint, appendDelivery, createWorkspace, type TaskLedger } from './workspace.js'
+
+/** 交付中转目录：先导出到 root 内的这里，再用独占复制搬到用户指定的目录。 */
+const STAGING_DIR = '.deliver'
+
+async function copyFileExcl(from: string, to: string): Promise<void> {
+  await copyFile(from, to, constants.COPYFILE_EXCL)
+}
 
 export type OpenInput = { path: string; cwd: string; mode?: 'read' | 'edit'; workspace?: boolean }
 
@@ -40,6 +48,7 @@ export type TaskRegistryDeps = {
   resolveDocument: (path: string, cwd: string) => Promise<ResolvedDoc>
   toolViewFor?: (scope: unknown) => ToolView | undefined
   copyFile?: (from: string, to: string) => Promise<void>
+  copyExcl?: (from: string, to: string) => Promise<void>
   createWorkspaceDir?: typeof createWorkspace
   waitToolTimeoutMs?: number
   logger?: (message: string, error?: unknown) => void
@@ -48,6 +57,7 @@ export type TaskRegistryDeps = {
 export type TaskRegistry = {
   open(scope: unknown, sessionId: string, input: OpenInput): Promise<TaskRecord>
   checkpoint(sessionId: string, taskId: string): Promise<Checkpoint>
+  deliver(sessionId: string, taskId: string, input?: { dir?: string }): Promise<Delivery>
   close(scope: unknown, sessionId: string, taskId: string): Promise<void>
   closeSession(sessionId: string): Promise<void>
   get(sessionId: string, taskId: string): TaskRecord
@@ -56,6 +66,21 @@ export type TaskRegistry = {
 
 export function createTaskRegistry(deps: TaskRegistryDeps): TaskRegistry {
   const entries = new Map<string, Entry>()
+
+  /** 用独占复制把草稿搬到目标目录：目标已存在就重新挑名字，绝不覆盖。 */
+  async function placeOutside(from: string, dir: string, sourceName: string): Promise<string> {
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const target = pickDeliveryTarget(dir, sourceName, existsSync)
+      try {
+        await (deps.copyExcl ?? copyFileExcl)(from, target.path)
+        return target.path
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'EEXIST') continue
+        throw new DomainError('deliver-failed', `交付到 ${target.path} 失败：${(error as Error).message}`)
+      }
+    }
+    throw new DomainError('deliver-failed', `目标目录被并发占用，请重试：${dir}`)
+  }
 
   function lookup(sessionId: string, taskId: string): Entry {
     const entry = entries.get(taskId)
@@ -243,6 +268,51 @@ export function createTaskRegistry(deps: TaskRegistryDeps): TaskRegistry {
         }
       }
       return checkpoint
+    },
+
+    async deliver(sessionId, taskId, input) {
+      const entry = lookup(sessionId, taskId)
+      const { record } = entry
+      if (record.readOnly) {
+        throw new DomainError('deliver-failed', '只读任务不产出新文件；请用 mode:"edit" 打开后再改。')
+      }
+      const tools = deps.toolViewFor?.(entry.scope)
+      if (tools === undefined) {
+        throw new DomainError('deliver-failed', '宿主没有提供工具视图，无法导出草稿')
+      }
+      const deliveryDir = resolve(record.doc.dir, input?.dir ?? '.')
+      await mkdir(deliveryDir, { recursive: true })
+      const stagingDir = join(record.root, STAGING_DIR)
+      try {
+        const staging = pickDeliveryTarget(stagingDir, record.doc.name, existsSync)
+        await mkdir(stagingDir, { recursive: true })
+        const relativePath = relative(record.root, staging.path).split('\\').join('/')
+        await createToolInvoker(tools, entry.scope).invoke(
+          `mcp__${record.serverName}__office_export`,
+          { document: record.documentId, path: relativePath },
+        )
+        const info = await stat(staging.path).catch(() => {
+          throw new DomainError('deliver-failed', `BetterOffice 没有写出草稿：${staging.path}`)
+        })
+        const sha256 = await sha256File(staging.path)
+        const targetPath = await placeOutside(staging.path, deliveryDir, record.doc.name)
+        const delivery: Delivery = {
+          taskId,
+          name: basename(targetPath),
+          path: targetPath,
+          size: info.size,
+          sha256,
+          createdAt: deps.now().toISOString(),
+        }
+        if (record.workspaceDir !== null) {
+          await appendDelivery(record.workspaceDir, delivery).catch((error: unknown) => {
+            deps.logger?.(`交付已落盘但写台账失败：${record.workspaceDir}`, error)
+          })
+        }
+        return delivery
+      } finally {
+        await rm(stagingDir, { recursive: true, force: true }).catch(() => undefined)
+      }
     },
 
     async close(_scope, sessionId, taskId) {
