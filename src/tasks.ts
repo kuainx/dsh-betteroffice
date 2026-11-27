@@ -2,7 +2,7 @@
 
 import { constants, existsSync } from 'node:fs'
 import { copyFile, mkdir, readdir, rm, stat } from 'node:fs/promises'
-import { basename, join, relative, resolve } from 'node:path'
+import { basename, isAbsolute, join, relative, resolve } from 'node:path'
 import { createCheckpoint, type Checkpoint } from './checkpoint.js'
 import { cleanupWorkspace, type CleanupDecision } from './cleanup.js'
 import type { ConfigData } from './config.js'
@@ -20,6 +20,25 @@ const STAGING_DIR = '.deliver'
 
 async function copyFileExcl(from: string, to: string): Promise<void> {
   await copyFile(from, to, constants.COPYFILE_EXCL)
+}
+
+/**
+ * 把绝对路径换成 MCP 认的相对路径：分隔符统一成 `/`，且必须落在 root 之内。
+ * 越界（`..` 开头或变成绝对路径）直接失败——宁可不编辑，也不能让 MCP 摸到 root 外的文件。
+ */
+export function mcpRelativePath(root: string, target: string): string {
+  const path = relative(root, target).split('\\').join('/')
+  if (path === '' || path.startsWith('..') || isAbsolute(path)) {
+    throw new DomainError('path-outside-root', `内部路径越出了 MCP 根目录：${target}（根目录 ${root}）`)
+  }
+  return path
+}
+
+/** 交付目录只允许是源文件所在目录或其子目录。 */
+export function assertInsideDir(parent: string, target: string): void {
+  const path = relative(parent, target)
+  if (path === '' || (!path.startsWith('..') && !isAbsolute(path))) return
+  throw new DomainError('delivery-outside', `只能在源文件所在目录或其子目录里交付：${target}`)
 }
 
 export type OpenInput = { path: string; cwd: string; mode?: 'read' | 'edit'; workspace?: boolean }
@@ -154,7 +173,9 @@ export function createTaskRegistry(deps: TaskRegistryDeps): TaskRegistry {
     const toolName = `mcp__${serverName}__office_open`
     try {
       await waitForTool(tools, scope, toolName, { timeoutMs: deps.waitToolTimeoutMs ?? 15_000 })
-      const result = await createToolInvoker(tools, scope).invoke(toolName, { path: relative(root, openedPath) })
+      const result = await createToolInvoker(tools, scope).invoke(toolName, {
+        path: mcpRelativePath(root, openedPath),
+      })
       const payload = readToolJson(result) as { document?: unknown } | undefined
       if (typeof payload?.document !== 'string' || payload.document === '') {
         throw new DomainError(
@@ -240,15 +261,18 @@ export function createTaskRegistry(deps: TaskRegistryDeps): TaskRegistry {
         if (workspaceDir !== null) await rm(workspaceDir, { recursive: true, force: true }).catch(() => undefined)
       }
 
-      // 编辑副本：把源文件复制进临时目录，之后一律只动副本。
+      // 编辑副本：把源文件复制进 MCP 能看到的位置（临时目录或工作文件夹的 draft/），之后一律只动副本。
+      // 绝不把原件路径交给 MCP——否则 agent 能绕过替换事务直接改原件。
       let openedPath = doc.absPath
-      if (plan.rootKind === 'temp') {
-        openedPath = join(plan.root, doc.name)
+      if (plan.rootKind !== 'parent') {
+        const targetDir = plan.rootKind === 'workspace' ? join(plan.root, 'draft') : plan.root
+        openedPath = join(targetDir, doc.name)
         try {
+          await mkdir(targetDir, { recursive: true })
           await (deps.copyFile ?? copyFile)(doc.absPath, openedPath)
         } catch (error) {
           await rollback()
-          throw new DomainError('copy-failed', `复制文档到临时目录失败：${openedPath}（${String(error)}）`)
+          throw new DomainError('copy-failed', `复制文档到编辑副本失败：${openedPath}（${String(error)}）`)
         }
       }
 
@@ -274,6 +298,9 @@ export function createTaskRegistry(deps: TaskRegistryDeps): TaskRegistry {
     async checkpoint(sessionId, taskId) {
       const entry = lookup(sessionId, taskId)
       const { record } = entry
+      if (record.readOnly) {
+        throw new DomainError('checkpoint-failed', '只读任务不产出检查点；请用 mode:"edit" 打开后再存档。')
+      }
       const tools = deps.toolViewFor?.(entry.scope)
       if (tools === undefined) {
         throw new DomainError('checkpoint-failed', '宿主没有提供工具视图，无法导出检查点')
@@ -318,6 +345,7 @@ export function createTaskRegistry(deps: TaskRegistryDeps): TaskRegistry {
         throw new DomainError('deliver-failed', '宿主没有提供工具视图，无法导出草稿')
       }
       const deliveryDir = resolve(record.doc.dir, input?.dir ?? '.')
+      assertInsideDir(record.doc.dir, deliveryDir)
       await mkdir(deliveryDir, { recursive: true })
       const stagingDir = join(record.root, STAGING_DIR)
       try {

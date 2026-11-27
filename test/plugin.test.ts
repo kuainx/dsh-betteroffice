@@ -45,19 +45,19 @@ test('apply 在宿主没有任何服务时也不抛错', () => {
   assert.doesNotThrow(() => apply(ctx as never, undefined))
 })
 
-test('替换工具在 pre-execute 阶段要求宿主审批，其他工具放行', () => {
+test('替换工具在 pre-execute 阶段要求宿主审批，其他工具放行', async () => {
   const { ctx, listeners } = fakeContext()
   apply(ctx as never, undefined)
   const hook = (listeners.get('tools/pre-execute') ?? [])[0]
   assert.ok(hook !== undefined)
   let passed = false
-  const other = hook({ name: 'betteroffice_deliver' }, () => {
+  const other = await hook({ name: 'betteroffice_deliver' }, () => {
     passed = true
     return 'next'
   })
   assert.equal(other, 'next')
   assert.equal(passed, true)
-  const decision = hook({ name: 'betteroffice_replace' }, () => 'next') as unknown as {
+  const decision = (await hook({ name: 'betteroffice_replace' }, () => 'next')) as unknown as {
     kind: string
     reason: string
   }

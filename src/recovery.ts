@@ -50,6 +50,21 @@ async function recoverOne(record: CommitRecord, deps: RecoveryDeps, commitsDir: 
   const hasBackup = await exists(record.backupPath)
 
   if (record.phase === 'prepared') {
+    // 崩溃可能发生在「回收成功、recycled 日志还没写」之间：原件不在了就用副本还原，不能当成没事发生。
+    if (!(await exists(record.originalPath))) {
+      if (!hasBackup) {
+        return {
+          taskId: record.taskId,
+          action: 'kept',
+          detail: `原件不在原位且恢复副本丢失：${record.originalPath}。日志保留供人工处理。`,
+        }
+      }
+      await copy(record.backupPath, record.originalPath)
+      await clearJournal(commitsDir, record.taskId)
+      await remove(record.backupPath)
+      deps.logger?.(`betteroffice: ${record.taskId} 上次替换中断，已用副本还原 ${record.originalPath}`)
+      return { taskId: record.taskId, action: 'restored', detail: `已还原 ${record.originalPath}` }
+    }
     await clearJournal(commitsDir, record.taskId)
     if (hasBackup) await remove(record.backupPath)
     deps.logger?.(`betteroffice: ${record.taskId} 上次替换未开始动原件，已清理日志`)
@@ -70,6 +85,15 @@ async function recoverOne(record: CommitRecord, deps: RecoveryDeps, commitsDir: 
       await clearJournal(commitsDir, record.taskId)
       await remove(record.backupPath)
       return { taskId: record.taskId, action: 'restored', detail: `已还原 ${record.originalPath}` }
+    }
+    // 原路径上若有文件，必须确实是这次生成的那份，否则不删备份、交给人工。
+    const current = await sha256(record.originalPath).catch(() => undefined)
+    if (record.candidateSha256 !== null && current !== record.candidateSha256) {
+      return {
+        taskId: record.taskId,
+        action: 'kept',
+        detail: `原路径上的文件不是这次生成的候选（哈希不符）：${record.originalPath}。恢复副本保留在 ${record.backupPath}，日志保留供人工处理。`,
+      }
     }
     await clearJournal(commitsDir, record.taskId)
     await remove(record.backupPath)

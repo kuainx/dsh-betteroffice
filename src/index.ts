@@ -99,14 +99,20 @@ export function apply(ctx: Context, config?: ConfigData): void {
   }
 
   // 替换原文件不可逆：参数里的 confirm 之外，再走一次宿主审批弹窗，用户点同意才真的动原件。
+  // 必须继续 next()：排在后面的策略（拒绝规则、审计）不能被我们截断。
   host.on(
     'tools/pre-execute',
     ((execution: { name?: string }, next: () => unknown) => {
       if (execution?.name !== 'betteroffice_replace') return next()
-      return {
-        kind: 'ask',
-        reason: 'BetterOffice 要把这个文档的原件移入回收站，再用草稿替换它。确认继续？',
-      }
+      return Promise.resolve(next()).then((rest) => {
+        if (rest !== null && typeof rest === 'object' && (rest as { kind?: string }).kind === 'deny') {
+          return rest
+        }
+        return {
+          kind: 'ask',
+          reason: 'BetterOffice 要把这个文档的原件移入回收站，再用草稿替换它。确认继续？',
+        }
+      })
     }) as (...args: unknown[]) => void,
   )
 

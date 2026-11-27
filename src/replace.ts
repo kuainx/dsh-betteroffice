@@ -1,5 +1,5 @@
 import { constants } from 'node:fs'
-import { copyFile, link, mkdir, rm, stat } from 'node:fs/promises'
+import { copyFile, mkdir, rm, stat } from 'node:fs/promises'
 import { basename, extname, join } from 'node:path'
 import { DomainError } from './errors.js'
 import {
@@ -15,7 +15,7 @@ export interface ReplaceDeps {
   platform?: NodeJS.Platform
   recycle: (path: string) => Promise<void>
   sha256?: (path: string) => Promise<string>
-  link?: (from: string, to: string) => Promise<void>
+  publish?: (from: string, to: string) => Promise<void>
   copy?: (from: string, to: string) => Promise<void>
   rename?: (from: string, to: string) => Promise<void>
   remove?: (path: string) => Promise<void>
@@ -63,7 +63,8 @@ export async function replaceOriginal(input: ReplaceInput, deps: ReplaceDeps): P
 
   const sha256 = deps.sha256 ?? sha256File
   const copy = deps.copy ?? ((from: string, to: string) => copyFile(from, to, constants.COPYFILE_EXCL))
-  const publish = deps.link ?? ((from: string, to: string) => link(from, to))
+  // 发布用独占复制：目标位置必须空着，COPYFILE_EXCL 保证"看起来空着"绝不算数；跨卷也成立（硬链接会 EXDEV）。
+  const publish = deps.publish ?? ((from: string, to: string) => copyFile(from, to, constants.COPYFILE_EXCL))
   const remove = deps.remove ?? (async (path: string) => await rm(path, { force: true }))
   const statSize = deps.statSize ?? (async (path: string) => (await stat(path)).size)
   const now = deps.now ?? (() => new Date())
@@ -114,13 +115,13 @@ export async function replaceOriginal(input: ReplaceInput, deps: ReplaceDeps): P
     await writeJournal(commitsDir, record)
 
     await publish(input.candidatePath, input.sourcePath).catch(async (error: unknown) => {
-      await restore(record, deps, copy)
+      await restore(record, deps, copy, sha256)
       throw new DomainError('publish-failed', `发布新文件失败（不会覆盖已存在的文件）：${describe(error)}`)
     })
 
     const published = await sha256(input.sourcePath)
     if (record.candidateSha256 !== null && published !== record.candidateSha256) {
-      await restore(record, deps, copy)
+      await restore(record, deps, copy, sha256, { force: true })
       throw new DomainError('publish-failed', '发布后校验失败，已用恢复副本还原原件。')
     }
 
@@ -140,7 +141,7 @@ export async function replaceOriginal(input: ReplaceInput, deps: ReplaceDeps): P
       backupPath: record.backupPath,
     }
   } catch (error) {
-    await clearJournal(commitsDir, record.taskId).catch(() => undefined)
+    // 不在这里清日志：失败后可能还需要启动恢复接手（还原或人工处理）。日志是唯一的现场记录。
     throw error
   } finally {
     await lock.release().catch(() => undefined)
@@ -148,8 +149,28 @@ export async function replaceOriginal(input: ReplaceInput, deps: ReplaceDeps): P
 }
 
 /** 失败路径：把备份复制回原路径（不是移动，备份留着直到确认成功）。 */
-async function restore(record: CommitRecord, deps: ReplaceDeps, copy: (from: string, to: string) => Promise<void>): Promise<void> {
+async function restore(
+  record: CommitRecord,
+  deps: ReplaceDeps,
+  copy: (from: string, to: string) => Promise<void>,
+  sha256: (path: string) => Promise<string>,
+  options: { force?: boolean } = {},
+): Promise<void> {
   const remove = deps.remove ?? (async (path: string) => await rm(path, { force: true }))
+  // 发布失败时原路径若被别的进程/同步客户端重新占了，绝不能删别人的文件；
+  // 但「发布后校验失败」这一步路径上的文件是刚由我们写进去的，可以覆盖。
+  const current = await sha256(record.originalPath).catch(() => undefined)
+  if (
+    options.force !== true &&
+    current !== undefined &&
+    record.candidateSha256 !== null &&
+    current !== record.candidateSha256
+  ) {
+    throw new DomainError(
+      'restore-conflict',
+      `原路径上出现了另一个文件，没有动它。恢复副本保留在：${record.backupPath}；这次生成的候选在：${record.candidatePath ?? '（已删除）'}。请确认后再处理。`,
+    )
+  }
   await remove(record.originalPath).catch(() => undefined)
   try {
     await copy(record.backupPath, record.originalPath)

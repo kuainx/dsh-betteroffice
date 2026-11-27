@@ -30,7 +30,9 @@ test('失败时给出可行动的错误', async () => {
 })
 
 test('交付把草稿另存到目标目录并清掉中转文件', async () => {
-  const outDir = await mkdtemp(join(tmpdir(), 'bo-out-'))
+  const dir = await mkdtemp(join(tmpdir(), 'bo-doc-'))
+  await writeFile(join(dir, 'a.docx'), 'source-bytes')
+  const outDir = join(dir, 'out')
   const holder = { root: '' }
   const tools = exportingTools(holder)
   const { reg } = harness({
@@ -40,13 +42,21 @@ test('交付把草稿另存到目标目录并清掉中转文件', async () => {
       return holder.root
     },
   })
-  const task = await reg.open({}, 's1', { path: 'a.docx', cwd: 'C:/d', mode: 'edit' })
+  const task = await reg.open({}, 's1', { path: 'a.docx', cwd: dir, mode: 'edit' })
 
   const delivered = await reg.deliver('s1', task.taskId, { dir: outDir })
   assert.equal(delivered.path, join(outDir, 'a.docx'))
   assert.equal(await readFile(delivered.path, 'utf8'), 'exported-bytes')
   assert.equal(delivered.sha256.length, 64)
   assert.equal(existsSync(join(task.root, '.deliver')), false)
+})
+
+test('交付目录越出源文件目录时拒绝', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'bo-doc-out-'))
+  await writeFile(join(dir, 'a.docx'), 'source-bytes')
+  const { reg } = harness({ tools: exportingTools({ root: '' }).view })
+  const task = await reg.open({}, 's1', { path: 'a.docx', cwd: dir, mode: 'edit' })
+  await assert.rejects(() => reg.deliver('s1', task.taskId, { dir: '..\\elsewhere' }), /只能在源文件所在目录/)
 })
 
 test('只读任务不提供交付', async () => {
@@ -66,7 +76,7 @@ test('交付成功后写进工作文件夹台账', async () => {
   })
   const task = await reg.open({}, 's1', { path: 'a.docx', cwd: source, mode: 'edit' })
   holder.root = task.root
-  const outDir = await mkdtemp(join(tmpdir(), 'bo-dlout-'))
+  const outDir = join(source, 'out')
   const delivered = await reg.deliver('s1', task.taskId, { dir: outDir })
   const ledger = await readLedger(task.workspaceDir as string)
   assert.deepEqual(ledger.deliveries?.map((item) => item.path), [delivered.path])

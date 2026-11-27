@@ -84,7 +84,7 @@ test('回收失败时报错并保留原件', async () => {
 
 test('发布阶段发现目标已存在时从备份恢复原件', async () => {
   const fix = await fixture({
-    link: async () => {
+    publish: async () => {
       const error = new Error('EEXIST') as NodeJS.ErrnoException
       error.code = 'EEXIST'
       throw error

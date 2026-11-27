@@ -50,6 +50,22 @@ test('prepared 阶段崩溃：原件未动，只清日志与副本', async () =>
   assert.equal(await readJournal(fix.commitsDir, 'a71c2e90'), undefined)
 })
 
+test('prepared 阶段崩溃但原件已不在：用副本把它放回去', async () => {
+  const fix = await fixture(null, 'old original bytes', 'prepared')
+  const outcomes = await recoverCommits({ home: fix.home })
+  assert.equal(outcomes[0]?.action, 'restored')
+  assert.equal(await readFile(fix.originalPath, 'utf8'), 'old original bytes')
+})
+
+test('recycled 阶段原路径上是别的文件：保留现场，不覆盖也不删副本', async () => {
+  const fix = await fixture('someone else wrote this', 'old original bytes', 'recycled')
+  const outcomes = await recoverCommits({ home: fix.home })
+  assert.equal(outcomes[0]?.action, 'kept')
+  assert.equal(await readFile(fix.originalPath, 'utf8'), 'someone else wrote this')
+  assert.equal(await readFile(fix.backupPath, 'utf8'), 'old original bytes')
+  assert.notEqual(await readJournal(fix.commitsDir, 'a71c2e90'), undefined)
+})
+
 test('recycled 阶段崩溃：用副本把原件还原回去', async () => {
   const fix = await fixture(null, 'old original bytes', 'recycled')
   const outcomes = await recoverCommits({ home: fix.home })

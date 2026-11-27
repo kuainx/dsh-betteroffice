@@ -96,7 +96,7 @@ export function createToolDefinitions(deps: ToolDeps): ToolDefinition[] {
       const mode = args.mode === 'edit' ? 'edit' : 'read'
       const task = await deps.registry.open(deps.scope, deps.sessionId, {
         path: requiredString(args, 'path', '文档路径'),
-        cwd: typeof args.cwd === 'string' && args.cwd !== '' ? args.cwd : cwdOf(),
+        cwd: cwdOf(),
         mode,
         workspace: args.workspace === true,
       })
