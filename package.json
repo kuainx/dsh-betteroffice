@@ -1,0 +1,54 @@
+{
+  "name": "dsh-betteroffice",
+  "version": "0.1.0",
+  "description": "在 DSH 里打开、读取并编辑 Word/Excel/PowerPoint 文档（BetterOffice MCP 宿主插件）",
+  "type": "module",
+  "main": "lib/src/index.js",
+  "types": "lib/src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/src/index.d.ts",
+      "default": "./lib/src/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "cordis.patch.yml",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "node --test --experimental-test-isolation=none \"lib/test/**/*.test.js\"",
+    "check": "npm run build && npm test"
+  },
+  "dsh": {
+    "manifestVersion": 1,
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "docx",
+    "xlsx",
+    "pptx",
+    "betteroffice"
+  ],
+  "license": "MIT",
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.1.0",
+    "@deepseek-ai/schemastery": "^3.19.0 || 3.20.0-alpha.1",
+    "@deepseek-ai/dsh-mcp-client": "^0.0.1-rc.1",
+    "@hyzyn/dsh-kit": "^0.8.1"
+  },
+  "devDependencies": {
+    "typescript": "~5.9.3",
+    "@types/node": "^22",
+    "@deepseek-ai/cordis": "^4.1.0",
+    "@deepseek-ai/schemastery": "3.20.0-alpha.1",
+    "@deepseek-ai/dsh-mcp-client": "^0.0.1-rc.1",
+    "@hyzyn/dsh-kit": "^0.8.1"
+  }
+}
