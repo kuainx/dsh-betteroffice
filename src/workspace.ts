@@ -1,8 +1,13 @@
 /** 工作文件夹名：`dsh-<原文件名含扩展名>-<YYMMDD-HHmmss>-<任务 id>`。 */
 
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { basename, dirname, join } from 'node:path'
+import { WorkspaceExistsError } from './errors.js'
+
 export const WORKSPACE_PREFIX = 'dsh-'
 /** 目录名上限（字节）。留余量给路径总长限制与同级目录。 */
 export const MAX_NAME_BYTES = 200
+export const LEDGER_FILE = '.betteroffice-task.json'
 
 const ILLEGAL_RUN = /[<>:"/\\|?*\u0000-\u001f]+/g
 
@@ -46,4 +51,60 @@ export function workspaceDirName(sourceFileName: string, taskId: string, at: Dat
     name = stripTrailingDotsAndSpaces(chars.join('')) + ext
   }
   return `${WORKSPACE_PREFIX}${name}${suffix}`
+}
+
+/** 工作文件夹台账，跨会话/跨重启的恢复依据。 */
+export type TaskLedger = {
+  taskId: string
+  sessionId: string
+  sourcePath: string
+  sourceHash: string
+  mode: 'read' | 'edit'
+  rootKind: 'parent' | 'temp' | 'workspace'
+  workspaceDir: string | null
+  createdAt: string
+  status: 'open' | 'closed'
+  mcpVersion: string
+}
+
+export type WorkspaceDirs = {
+  dir: string
+  draftDir: string
+  checkpointsDir: string
+  ledgerPath: string
+}
+
+/**
+ * 在源文件同级目录独占创建工作文件夹。已存在即失败——绝不接管、绝不复用别人的目录。
+ */
+export async function createWorkspace(opts: {
+  sourcePath: string
+  taskId: string
+  at: Date
+  ledger: TaskLedger
+}): Promise<WorkspaceDirs> {
+  const dir = join(dirname(opts.sourcePath), workspaceDirName(basename(opts.sourcePath), opts.taskId, opts.at))
+  try {
+    await mkdir(dir)
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'EEXIST') throw new WorkspaceExistsError(dir)
+    throw error
+  }
+  const draftDir = join(dir, 'draft')
+  const checkpointsDir = join(dir, 'checkpoints')
+  await mkdir(draftDir)
+  await mkdir(checkpointsDir)
+  const ledgerPath = join(dir, LEDGER_FILE)
+  const record: TaskLedger = { ...opts.ledger, workspaceDir: dir }
+  await writeFile(ledgerPath, JSON.stringify(record, null, 2), { encoding: 'utf8', flag: 'wx' })
+  return { dir, draftDir, checkpointsDir, ledgerPath }
+}
+
+export async function readLedger(dir: string): Promise<TaskLedger> {
+  const path = join(dir, LEDGER_FILE)
+  try {
+    return JSON.parse(await readFile(path, 'utf8')) as TaskLedger
+  } catch (error) {
+    throw new Error(`台账缺失或损坏：${path}（${(error as Error).message}）`)
+  }
 }
