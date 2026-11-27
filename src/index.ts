@@ -4,14 +4,16 @@ import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { delimiter } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
-import { dshHome } from '@hyzyn/dsh-kit'
+import { dshHome, settingsEntryScope } from '@hyzyn/dsh-kit'
 import { Config, resolveConfig, type ConfigData } from './config.js'
+import { createBetterOfficeCommand, type CommandApi } from './commands.js'
 import { createMounter, type McpClientModule } from './mount.js'
 import { resolveDocumentPath } from './paths.js'
 import { resolveMcpRuntime } from './runtime.js'
 import { createTaskRegistry, type TaskRegistry } from './tasks.js'
 import type { ToolView } from './invoke.js'
 import { registerTools, type ToolDefinition } from './tools.js'
+import { createCommandDeps } from './wire.js'
 
 export const name = 'betteroffice'
 
@@ -40,6 +42,7 @@ type HostContext = {
   on(event: string, handler: (...args: unknown[]) => void): () => void
   effect(fn: () => (() => void) | void, label?: string): unknown
   get(service: string): unknown
+  inject?(names: string[], handler: (scoped: HostContext) => void): unknown
 }
 
 function log(message: string, error?: unknown): void {
@@ -55,7 +58,9 @@ function sessionIdOf(agent: AgentLike): string | undefined {
 export function apply(ctx: Context, config?: ConfigData): void {
   const host = ctx as unknown as HostContext
   const rawConfig = config as unknown
+  let configOverride: ConfigData | undefined
   const currentConfig = (): ConfigData => {
+    if (configOverride !== undefined) return configOverride
     try {
       return resolveConfig(rawConfig)
     } catch (error) {
@@ -141,6 +146,37 @@ export function apply(ctx: Context, config?: ConfigData): void {
       log(`为会话 ${sessionId} 注册 BetterOffice 工具失败`, error)
     }
   }
+
+  // `/betteroffice` 只在宿主同时提供 commands 与 settings 时注册：配置项的写入要落进设置里。
+  host.inject?.(['commands', 'settings'], scoped => {
+    const commands = (scoped.get('commands') ?? host.get('commands')) as CommandApi | undefined
+    if (commands === undefined || typeof commands.register !== 'function') {
+      log('宿主没有提供 commands 服务，/betteroffice 命令不可用')
+      return
+    }
+    const settings = settingsEntryScope(scoped as unknown as Context, 'betteroffice')
+    const command = createBetterOfficeCommand(
+      createCommandDeps({
+        home: dshHome(),
+        getConfig: currentConfig,
+        saveRuntimeVersion: async version => {
+          configOverride = { ...currentConfig(), runtimeVersion: version }
+          if (settings === undefined) {
+            log('宿主没有提供可写的设置项，运行时版本只在本次会话生效')
+            return
+          }
+          await settings.update({ runtimeVersion: version })
+        },
+        logger: log,
+      }),
+    )
+    const dispose = commands.register({
+      name: command.name,
+      description: command.description,
+      handler: invocation => command.handler(invocation),
+    })
+    scoped.effect?.(() => dispose, 'betteroffice.command')
+  })
 
   // agent/created 是串行派发，这里不能 await：挂载 MCP 是异步的，失败只记日志。
   host.on('agent/created', (...args: unknown[]) => {
