@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { createToolInvoker } from '../src/invoke.js'
+import { createToolInvoker, waitForTool } from '../src/invoke.js'
 
 type FakeTool = { execute(args: unknown, exec: unknown): Promise<unknown> }
 
@@ -36,4 +36,24 @@ test('工具执行失败原样冒出', async () => {
     'mcp__bo_1__office_export': { execute: async () => { throw new Error('MCP 断开了') } },
   }), undefined)
   await assert.rejects(() => invoker.invoke('mcp__bo_1__office_export', {}), /MCP 断开了/)
+})
+
+test('等工具注册：晚一点出现也能等到', async () => {
+  let polls = 0
+  const tools = {
+    view: () => {
+      polls += 1
+      const ready = polls >= 3
+      return new Map<string, FakeTool>(ready ? [['mcp__bo_1__office_open', { execute: async () => ({}) }]] : [])
+    },
+  }
+  await waitForTool(tools, undefined, 'mcp__bo_1__office_open', { timeoutMs: 1000, intervalMs: 1 })
+  assert.ok(polls >= 3)
+})
+
+test('等工具注册：超时给出 tool-timeout', async () => {
+  await assert.rejects(
+    () => waitForTool(viewOf({}), undefined, 'mcp__bo_1__office_open', { timeoutMs: 20, intervalMs: 1 }),
+    (error: { code?: string }) => error.code === 'tool-timeout',
+  )
 })

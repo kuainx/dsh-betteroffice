@@ -28,3 +28,30 @@ export function createToolInvoker(tools: ToolView, scope: unknown): ToolInvoker 
     },
   }
 }
+
+export type WaitOptions = { timeoutMs?: number; intervalMs?: number }
+
+/**
+ * 等 MCP 把工具注册上来。挂载返回不代表子进程已经握手完成，
+ * 所以按工具出现与否判断就绪，而不是赌 fiber 的内部状态。
+ */
+export async function waitForTool(
+  tools: ToolView,
+  scope: unknown,
+  name: string,
+  options: WaitOptions = {},
+): Promise<void> {
+  const timeoutMs = options.timeoutMs ?? 15_000
+  const intervalMs = options.intervalMs ?? 50
+  const deadline = Date.now() + timeoutMs
+  for (;;) {
+    if (tools.view(scope)?.get(name) !== undefined) return
+    if (Date.now() >= deadline) {
+      throw new DomainError(
+        'tool-timeout',
+        `等待 ${name} 注册超时（${timeoutMs}ms）：MCP 可能启动失败或已断开，请用 betteroffice_list 确认任务状态后重试。`,
+      )
+    }
+    await new Promise((resolve) => setTimeout(resolve, intervalMs))
+  }
+}
