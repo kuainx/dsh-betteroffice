@@ -145,3 +145,64 @@ test('office_open 失败时卸载挂载、删掉临时目录、不留记录', as
   assert.deepEqual(reg.list('s1'), [])
   assert.equal(existsSync(tempDir), false)
 })
+
+/** 假 MCP：office_open 返回固定 id，office_export 真的把文件写到 root 下。 */
+function exportingTools(holder: { root: string }) {
+  const calls: ToolCall[] = []
+  const view = {
+    view: () => ({
+      get: (name: string) => ({
+        execute: async (args: Record<string, unknown>) => {
+          calls.push({ name, args })
+          if (name.endsWith('__office_export')) {
+            const target = join(holder.root, String(args['path']))
+            await mkdir(dirname(target), { recursive: true })
+            await writeFile(target, 'exported-bytes')
+            return { content: [{ type: 'text', text: '{}' }] }
+          }
+          return { content: [{ type: 'text', text: JSON.stringify({ document: 'doc1' }) }] }
+        },
+      }),
+    }),
+  }
+  return { view, calls }
+}
+
+test('检查点落在工作文件夹 checkpoints/ 下并写进台账', async () => {
+  const source = await mkdtemp(join(tmpdir(), 'bo-cp-'))
+  const docPath = join(source, 'a.docx')
+  await writeFile(docPath, 'source-bytes')
+  const holder = { root: '' }
+  const tools = exportingTools(holder)
+  const { reg } = harness({ tools: tools.view, config: () => ({ workspaceMode: 'always', cleanupMode: 'off', nodePath: '', runtimeVersion: '0.4.0' }) })
+  const task = await reg.open({}, 's1', { path: 'a.docx', cwd: source, mode: 'edit' })
+  holder.root = task.root
+  const saved = await reg.checkpoint('s1', task.taskId)
+
+  assert.ok(task.workspaceDir !== null)
+  assert.equal(dirname(saved.path), join(task.workspaceDir, 'checkpoints'))
+  assert.ok(existsSync(saved.path))
+  assert.equal(saved.size, 'exported-bytes'.length)
+  assert.equal(saved.sha256, await sha256File(saved.path))
+
+  const ledger = await readLedger(task.workspaceDir)
+  assert.deepEqual(ledger.checkpoints?.map((cp) => cp.name), [saved.name])
+})
+
+test('临时目录编辑的检查点落在临时目录 checkpoints/ 下且不记账', async () => {
+  const holder = { root: '' }
+  const tools = exportingTools(holder)
+  let tempDir = ''
+  const { reg } = harness({
+    tools: tools.view,
+    makeTempDir: async () => {
+      tempDir = await mkdtemp(join(tmpdir(), 'bo-cpt-'))
+      return tempDir
+    },
+  })
+  const task = await reg.open({}, 's1', { path: 'a.docx', cwd: 'C:/d', mode: 'edit' })
+  holder.root = tempDir
+  const saved = await reg.checkpoint('s1', task.taskId)
+  assert.equal(dirname(saved.path), join(tempDir, 'checkpoints'))
+  assert.ok(existsSync(saved.path))
+})

@@ -116,23 +116,21 @@ export function createToolDefinitions(deps: ToolDeps): ToolDefinition[] {
   const checkpoint: ToolDefinition = {
     name: 'betteroffice_checkpoint',
     description:
-      '把当前草稿导出为检查点（不覆盖已存在的检查点）。阶段 1 尚未实现，调用会返回明确说明；' +
-      '在此之前请用 mcp__bo_<taskId>__office_export 导出，并自行避免覆盖已有文件。',
+      '把当前草稿导出为检查点，存进工作文件夹的 checkpoints/，绝不覆盖已有检查点。' +
+      '检查点不是交付：它只是可回退的中间版本，返回落盘文件的真实路径、大小与 sha256。',
     parameters: {
       type: 'object',
       properties: {
         task: { type: 'string', description: 'betteroffice_open 返回的 taskId' },
-        name: { type: 'string', description: '检查点名（可选）' },
       },
       required: ['task'],
       additionalProperties: false,
     },
     output: { schema: OUTPUT_SCHEMA, render: renderJson },
-    async execute() {
-      return {
-        status: 'not-implemented',
-        message: '检查点工具将在阶段 2 提供；当前请用 mcp__ 导出工具生成副本。',
-      }
+    async execute(args) {
+      const taskId = requiredString(args, 'task', '任务 id')
+      const saved = await deps.registry.checkpoint(deps.sessionId, taskId)
+      return { taskId, ...saved }
     },
   }
 

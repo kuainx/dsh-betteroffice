@@ -2,6 +2,7 @@
 
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
+import type { Checkpoint } from './checkpoint.js'
 import { WorkspaceExistsError } from './errors.js'
 
 export const WORKSPACE_PREFIX = 'dsh-'
@@ -65,6 +66,8 @@ export type TaskLedger = {
   createdAt: string
   status: 'open' | 'closed'
   mcpVersion: string
+  /** 已验证落盘的检查点，按时间追加；失败候选绝不写进来。 */
+  checkpoints?: Checkpoint[]
 }
 
 export type WorkspaceDirs = {
@@ -107,4 +110,13 @@ export async function readLedger(dir: string): Promise<TaskLedger> {
   } catch (error) {
     throw new Error(`台账缺失或损坏：${path}（${(error as Error).message}）`)
   }
+}
+
+/** 检查点落盘并验证之后才记账：台账里的 checkpoints 就是「可信最新版本」的清单。 */
+export async function appendCheckpoint(dir: string, checkpoint: Checkpoint): Promise<TaskLedger> {
+  const ledger = await readLedger(dir)
+  const next: TaskLedger = { ...ledger, checkpoints: [...(ledger.checkpoints ?? []), checkpoint] }
+  const path = join(dir, LEDGER_FILE)
+  await writeFile(path, JSON.stringify(next, null, 2), 'utf8')
+  return next
 }

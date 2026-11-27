@@ -18,6 +18,7 @@ const record = {
 function makeRegistry(overrides: Partial<TaskRegistry> = {}): TaskRegistry {
   return {
     open: async () => record,
+    checkpoint: async () => ({ name: 'cp', path: 'C:/d/checkpoints/cp.docx', size: 1, sha256: 's', createdAt: '' }),
     close: async () => {},
     closeSession: async () => {},
     get: () => record,
