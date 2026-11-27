@@ -2,7 +2,30 @@
 
 让 DeepSeek Harness（DSH）的 Agent 读取、检查和编辑现有的 Word（`.docx`）、Excel（`.xlsx`）和 PowerPoint（`.pptx`）文件。**编辑默认另存，不改动原文件。**
 
-> 项目目前处于设计阶段，插件尚未发布。以下是计划中的使用方式。
+> 项目开发中，尚未发布。进度见下方「当前状态」。
+
+## 当前状态
+
+| 阶段 | 内容 | 状态 |
+| --- | --- | --- |
+| 0–1 | 插件骨架、插件配置项、按文件与会话隔离的只读打开、挂载 BetterOffice MCP、5 个 Agent 工具 | 已完成 |
+| 2 | 副本编辑、检查点、交付另存、替换原文件 | 进行中 |
+| 3 | 配置页、运行时检测/安装/更新 | 未开始 |
+| 4 | 回收站替换事务与崩溃恢复 | 未开始 |
+
+当前可用：让 Agent 只读地打开一个 `.docx` / `.xlsx` / `.pptx` 并检查内容（打开后由 BetterOffice 的检查类工具读取、搜索、核对）。编辑类工具要等阶段 2。
+
+### Agent 工具
+
+| 工具 | 作用 |
+| --- | --- |
+| `betteroffice_open` | 打开一个文档，返回任务 ID；路径只在这一步给 |
+| `betteroffice_list` | 列出本会话已打开的任务 |
+| `betteroffice_checkpoint` | 导出检查点（阶段 2 可用） |
+| `betteroffice_deliver` | 另存交付（阶段 2 可用） |
+| `betteroffice_close` | 关闭任务并释放该文档的 MCP 实例 |
+
+打开文档后，该文档的 BetterOffice 工具以 `mcp__bo_<任务ID>__<工具名>` 出现，每个任务一个独立 MCP 实例。
 
 ## 怎么用
 
