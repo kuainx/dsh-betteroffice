@@ -6,6 +6,11 @@ export const RUNTIME_ROOT = join('betteroffice', 'runtime')
 
 const VERSION_PATTERN = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/
 
+/** 是否是形如 0.4.0 / 0.4.0-rc.1 的版本号（同时挡住 ../ 之类的路径注入）。 */
+export function isVersion(value: string): boolean {
+  return VERSION_PATTERN.test(value)
+}
+
 /** 某一版本运行时的安装目录。 */
 export function runtimeDirFor(home: string, version: string): string {
   return join(home, RUNTIME_ROOT, version)
