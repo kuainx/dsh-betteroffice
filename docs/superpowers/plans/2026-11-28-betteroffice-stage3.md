@@ -3,6 +3,12 @@
 > 前置：阶段 0–2 已完成（`3ddcc08`），67 条测试全绿。已确认 `@betteroffice/agents@0.4.0` 真实可跑，
 > 但运行时**不内置**（用户决定，m00228），要从 npm 装进插件私有目录。
 >
+> **进度：T20–T25 已完成。** 95 条测试全绿。真实安装冒烟已通过：临时 home 走 `createCommandDeps` →
+> `/betteroffice 安装 0.4.0` → 私有目录落到 `betteroffice/runtime/0.4.0`、`dist/cli.js` 2098 字节、
+> `node cli.js --help` 正常打印用法、`installedVersions` 返回 `["0.4.0"]`。
+> 与计划的差异：设置页沿用 schemastery 自动生成的那份，没有自绘卡片（见下节）；
+> 没有内置 fallback 运行时副本 —— 用户明确选择「不内置」，首次使用必须先 `/betteroffice 安装`。
+>
 > 本阶段只做 DESIGN §7：检测、安装、检查更新、更新、回退，以及让用户能触发这些动作的入口。
 > 不碰 §5.2 替换原文件（阶段 4）。
 
