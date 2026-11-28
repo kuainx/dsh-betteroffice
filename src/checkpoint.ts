@@ -10,6 +10,7 @@ export function checkpointName(sourceName: string, at: Date, version: number): s
   const dot = sourceName.lastIndexOf('.')
   const rawStem = dot > 0 ? sourceName.slice(0, dot) : sourceName
   const ext = dot > 0 ? sourceName.slice(dot) : ''
+  // oxlint-disable-next-line no-control-regex -- 与 workspace.ts 同一条规则：检查点文件名不能带控制字符
   const stem = rawStem.replace(/[<>:"/\\|?*\u0000-\u001f]+/g, '_').replace(/[. ]+$/, '')
   return `${stem === '' ? 'document' : stem}-${formatStamp(at)}-v${version}${ext}`
 }

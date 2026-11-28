@@ -1,6 +1,5 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { join } from 'node:path'
 import { createInstaller } from '../src/installer.js'
 import { cliPathFor } from '../src/runtime.js'
 import { runtimeDirFor } from '../src/npm-runtime.js'

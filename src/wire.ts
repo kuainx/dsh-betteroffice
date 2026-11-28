@@ -37,7 +37,7 @@ function capture(command: string, args: readonly string[], options: CaptureOptio
   return new Promise<CaptureResult>((resolve) => {
     const child = spawnPortable(command, [...args], {
       stdio: ['ignore', 'pipe', 'pipe'],
-      env: { ...process.env, ...(options.env ?? {}) },
+      env: { ...process.env, ...options.env },
       ...(options.cwd === undefined ? {} : { cwd: options.cwd }),
     })
     let stdout = ''

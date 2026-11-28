@@ -137,8 +137,10 @@ test('非授权来源的动作请求被拒且不调 install', async () => {
 test('授权来源的 POST 走通并写 JSON', async () => {
   const { routes, written } = fakeRoutes({ body: { action: 'check' } })
   await hit(routes[1]!)
-  assert.equal(written[0]?.status, 200)
-  assert.equal((written[0]?.body as { ok: boolean }).ok, true)
+  const first = written[0]
+  assert.ok(first)
+  assert.equal(first.status, 200)
+  assert.equal((first.body as { ok: boolean }).ok, true)
 })
 
 test('GET status 在授权下返回快照', async () => {
@@ -151,8 +153,10 @@ test('GET status 在授权下返回快照', async () => {
     ],
   )
   await hit(routes[0]!)
-  assert.equal(written[0]?.status, 200)
-  assert.ok((written[0]?.body as { runtime: unknown }).runtime !== undefined)
+  const first = written[0]
+  assert.ok(first)
+  assert.equal(first.status, 200)
+  assert.ok((first.body as { runtime: unknown }).runtime !== undefined)
 })
 
 test('请求体不是合法 JSON 时返回 400', async () => {
@@ -182,8 +186,10 @@ test('方法不对返回 405，不执行动作', async () => {
 test('围栏抛错也回 JSON 500，而不是让宿主兜底成 400', async () => {
   const { routes, written } = fakeRoutes({ admitThrows: true })
   await hit(routes[0]!)
-  assert.equal(written[0]?.status, 500)
-  assert.equal((written[0]?.body as { ok: boolean }).ok, false)
+  const first = written[0]
+  assert.ok(first)
+  assert.equal(first.status, 500)
+  assert.equal((first.body as { ok: boolean }).ok, false)
 })
 
 test('回退到没装过的版本返回 400 且列出可选项', async () => {

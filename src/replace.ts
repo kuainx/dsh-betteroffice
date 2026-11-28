@@ -135,10 +135,8 @@ export async function replaceOriginal(input: ReplaceInput, deps: ReplaceDeps): P
       recycled: true,
       backupPath: record.backupPath,
     }
-  } catch (error) {
-    // 不在这里清日志：失败后可能还需要启动恢复接手（还原或人工处理）。日志是唯一的现场记录。
-    throw error
   } finally {
+    // 失败时不在这里清日志：可能还需要启动恢复接手（还原或人工处理）。日志是唯一的现场记录。
     await lock.release().catch(() => undefined)
   }
 }

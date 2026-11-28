@@ -11,6 +11,7 @@ export const WORKSPACE_PREFIX = 'dsh-'
 export const MAX_NAME_BYTES = 200
 export const LEDGER_FILE = '.betteroffice-task.json'
 
+// oxlint-disable-next-line no-control-regex -- 文件名里必须剔掉控制字符，否则 exFAT/同步盘上会炸
 const ILLEGAL_RUN = /[<>:"/\\|?*\u0000-\u001f]+/g
 
 function pad(value: number, width: number): string {
