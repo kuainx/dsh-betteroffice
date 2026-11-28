@@ -48,8 +48,12 @@ window.__ModuleLoader__.load({
             body === null ||
             typeof body !== 'object' ||
             body.ok === false ||
+            body.node === null ||
             typeof body.node !== 'object' ||
+            body.runtime === null ||
             typeof body.runtime !== 'object' ||
+            !Array.isArray(body.runtime.installed) ||
+            !Array.isArray(body.messages) ||
             !Array.isArray(body.inFlight)
           ) {
             throw new Error(body && body.error ? body.error : '宿主返回的状态不是配置卡片认识的格式，请把 DSH 升到 0.2.0-rc.1 以上。')
