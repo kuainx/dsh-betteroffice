@@ -38,6 +38,18 @@ export function lookupTool(view: unknown, name: string): ToolDefinitionLike | un
   return undefined
 }
 
+/** 排查用：把宿主返回的工具表形状说成人话，超时时贴进错误里，省一次盲猜。 */
+export function describeView(view: unknown): string {
+  if (view === null) return 'null'
+  if (typeof view !== 'object') return `typeof ${typeof view}`
+  if (Array.isArray(view)) return `array(${view.length})`
+  if (view instanceof Map) {
+    return `Map(${view.size}){${[...view.keys()].slice(0, 6).join(',')}}`
+  }
+  const ctor = (view as { constructor?: { name?: string } }).constructor?.name ?? 'object'
+  return `${ctor}{${Object.keys(view as Record<string, unknown>).slice(0, 6).join(',')}}`
+}
+
 export type InvokeOptions = { signal?: AbortSignal }
 
 export type ToolInvoker = {
@@ -101,9 +113,15 @@ export async function waitForTool(
   for (;;) {
     if (lookupTool(tools.view(scope), name) !== undefined) return
     if (Date.now() >= deadline) {
+      let shape = '未知'
+      try {
+        shape = describeView(tools.view(scope))
+      } catch (error) {
+        shape = `view() 抛错：${error instanceof Error ? error.message : String(error)}`
+      }
       throw new DomainError(
         'tool-timeout',
-        `等待 ${name} 注册超时（${timeoutMs}ms）：MCP 可能启动失败或已断开，请用 betteroffice_list 确认任务状态后重试。`,
+        `等待 ${name} 注册超时（${timeoutMs}ms）：工具表是 ${shape}，MCP 可能启动失败或已断开，请用 betteroffice_list 确认任务状态后重试。`,
       )
     }
     await new Promise((resolve) => setTimeout(resolve, intervalMs))

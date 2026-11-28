@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { createToolInvoker, waitForTool } from '../src/invoke.js'
+import { createToolInvoker, describeView, waitForTool } from '../src/invoke.js'
 
 type FakeTool = { execute(args: unknown, exec: unknown): Promise<unknown> }
 
@@ -21,6 +21,13 @@ test('调用已注册的 MCP 工具并透传结果', async () => {
   const result = await invoker.invoke('mcp__bo_1__office_export', { path: 'checkpoints/cp-0001.docx' })
   assert.deepEqual(calls, [{ path: 'checkpoints/cp-0001.docx' }])
   assert.deepEqual(result, { content: [{ type: 'text', text: 'ok' }] })
+})
+
+test('describeView 把各种工具表形状说成人话', () => {
+  assert.equal(describeView(null), 'null')
+  assert.equal(describeView(() => undefined), 'typeof function')
+  assert.equal(describeView([{ name: 'a' }]), 'array(1)')
+  assert.match(describeView(new Map()), /^Map\(0\)\{(.*)\}$/)
 })
 
 test('工具不存在时报 tool-not-found', async () => {
