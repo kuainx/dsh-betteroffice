@@ -8,7 +8,7 @@ import { admitRoute, dshHome, readJsonBody, settingsEntryScope, writeJson } from
 import { Config, resolveConfig, type ConfigData } from './config.js'
 import { createBetterOfficeCommand, type CommandApi } from './commands.js'
 import { decideMcpCall } from './guard.js'
-import { createMounter, type McpClientModule } from './mount.js'
+import { createConnector } from './mcp.js'
 import { listInstalledRuntimes } from './npm-runtime.js'
 import { fetchLatestVersion } from './registry.js'
 import { createControlApi, registerControlRoutes, type RouteWeb } from './routes.js'
@@ -18,7 +18,6 @@ import { readStoredVersion, writeStoredVersion } from './store.js'
 import { recycleFile } from './recycle.js'
 import { recoverCommits } from './recovery.js'
 import { createTaskRegistry, type TaskRegistry } from './tasks.js'
-import type { ToolView } from './invoke.js'
 import { registerTools, type ToolDefinition } from './tools.js'
 import { createCommandDeps, createRuntimeInstaller, runPowershell } from './wire.js'
 
@@ -101,32 +100,8 @@ export function apply(ctx: Context, config?: ConfigData): void {
     }
   }
 
-  const mounter = createMounter({
-    logger: log,
-    async loadClient() {
-      // 变量说明符：避免打包器把可选 peer 内联进来，同时确保用的是宿主那一份。
-      const specifier: string = '@deepseek-ai/dsh-mcp-client'
-      try {
-        const module = (await import(specifier)) as { apply?: unknown }
-        if (typeof module.apply !== 'function') {
-          log('@deepseek-ai/dsh-mcp-client 不提供 apply，无法挂载')
-          return undefined
-        }
-        return module as McpClientModule
-      } catch (error) {
-        log('宿主没有提供 @deepseek-ai/dsh-mcp-client，BetterOffice 工具将不可用', error)
-        return undefined
-      }
-    },
-  })
-
-  /** 先看 agent 自己的 scope，再退到根 ctx：MCP 工具挂在 agent.ctx 那一层。 */
-  function toolBag(scope: unknown): ToolView | undefined {
-    const bag =
-      (scope as { get?: (name: string) => unknown } | undefined)?.get?.('tools') ?? host.get('tools')
-    if (bag === undefined || typeof (bag as ToolView).view !== 'function') return undefined
-    return bag as ToolView
-  }
+  // 自己拉起 MCP 子进程：宿主沙箱不暴露 ctx.plugin，没法再借宿主的 mcp-client 挂载。
+  const connector = createConnector({ logger: log })
 
   // 替换原文件不可逆：参数里的 confirm 之外，再走一次宿主审批弹窗，用户点同意才真的动原件。
   // 必须继续 next()：排在后面的策略（拒绝规则、审计）不能被我们截断。
@@ -155,7 +130,7 @@ export function apply(ctx: Context, config?: ConfigData): void {
   })
 
   const registry: TaskRegistry = createTaskRegistry({
-    mounter,
+    connector,
     config: currentConfig,
     resolveRuntime: () =>
       resolveMcpRuntime({
@@ -170,7 +145,6 @@ export function apply(ctx: Context, config?: ConfigData): void {
     now: () => new Date(),
     newTaskId: () => randomBytes(4).toString('hex'),
     resolveDocument: resolveDocumentPath,
-    toolViewFor: toolBag,
     home: dshHome(),
     // 回收站是平台能力：非 Windows 上这里会以 recycle-unavailable 结束，工具不会退化成永久删除。
     recycle: path => recycleFile(path, { run: runPowershell }),

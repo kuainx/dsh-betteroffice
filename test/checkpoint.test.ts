@@ -44,7 +44,7 @@ test('检查点导出到 checkpoints/ 下的相对路径并返回真实文件信
   assert.deepEqual(dirs, ['C:/ws/checkpoints'])
   assert.deepEqual(calls, [
     {
-      name: 'mcp__bo_a71c2e90__office_export',
+      name: 'office_export',
       args: { document: 'doc1', path: 'checkpoints/年度报告-261127-144126-v1.docx' },
     },
   ])

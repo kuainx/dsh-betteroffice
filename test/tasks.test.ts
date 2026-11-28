@@ -6,14 +6,14 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { sha256File } from '../src/paths.js'
 import { readLedger } from '../src/workspace.js'
-import { exportingTools, fakeTools, harness } from './tasks-harness.js'
+import { harness } from './tasks-harness.js'
 
 test('打开文档前先等启动恢复完成，避免读到半途的事务', async () => {
   let release = (): void => {}
   const gate = new Promise<void>((resolve) => {
     release = () => resolve()
   })
-  const { reg } = harness({ tools: fakeTools().view, awaitRecovery: () => gate })
+  const { reg } = harness({ awaitRecovery: () => gate })
   let opened = false
   const pending = reg.open({}, 's1', { path: 'a.docx', cwd: 'C:/d' }).then(() => {
     opened = true
@@ -48,40 +48,35 @@ test('别的会话用同一 taskId 被拒', async () => {
   assert.throws(() => reg.get('s2', task.taskId), (error: never) => (error as { code?: string }).code === 'task-foreign')
 })
 
-test('MCP 挂载失败时不留下任务记录', async () => {
-  const { reg, disposed } = harness({ failMount: true })
+test('MCP 启动失败时不留下任务记录', async () => {
+  const { reg, disposed } = harness({ failConnect: true })
   await assert.rejects(() => reg.open({}, 's1', { path: 'a.docx', cwd: 'C:/d' }), /spawn 失败/)
   assert.deepEqual(reg.list('s1'), [])
   assert.deepEqual(disposed, [])
 })
 
 test('open 时插件自己调 office_open 并记下文档 id', async () => {
-  const tools = fakeTools({ document: 'doc7' })
-  const { reg } = harness({ tools: tools.view })
+  const { reg, calls } = harness({ document: 'doc7' })
   const task = await reg.open({}, 's1', { path: 'a.docx', cwd: 'C:/d' })
   assert.equal(task.documentId, 'doc7')
-  assert.deepEqual(tools.calls, [
-    { name: 'mcp__bo_a71c2e90__office_open', args: { path: 'a.docx' } },
-  ])
+  assert.deepEqual(calls, [{ name: 'office_open', args: { path: 'a.docx' } }])
   assert.equal(task.openedPath, 'C:/d/a.docx')
 })
 
 test('编辑副本：打开的是临时目录里的副本而不是源文件', async () => {
-  const tools = fakeTools()
-  const { reg, copies } = harness({ tools: tools.view })
+  const { reg, copies, calls } = harness()
   const task = await reg.open({}, 's1', { path: 'a.docx', cwd: 'C:/d', mode: 'edit' })
   const copy = join('C:/tmp/bo-x', 'a.docx')
   assert.equal(task.rootKind, 'temp')
   assert.equal(task.openedPath, copy)
   assert.deepEqual(copies, [`C:/d/a.docx->${copy}`])
-  assert.deepEqual(tools.calls, [{ name: 'mcp__bo_a71c2e90__office_open', args: { path: 'a.docx' } }])
+  assert.deepEqual(calls, [{ name: 'office_open', args: { path: 'a.docx' } }])
 })
 
-test('office_open 失败时卸载挂载、删掉临时目录、不留记录', async () => {
-  const tools = fakeTools({ fail: true })
+test('office_open 失败时关掉连接、删掉临时目录、不留记录', async () => {
   let tempDir = ''
   const { reg, disposed } = harness({
-    tools: tools.view,
+    failOpen: true,
     makeTempDir: async () => {
       tempDir = await mkdtemp(join(tmpdir(), 'bo-task-'))
       return tempDir
@@ -97,11 +92,8 @@ test('检查点落在工作文件夹 checkpoints/ 下并写进台账', async () 
   const source = await mkdtemp(join(tmpdir(), 'bo-cp-'))
   const docPath = join(source, 'a.docx')
   await writeFile(docPath, 'source-bytes')
-  const holder = { root: '' }
-  const tools = exportingTools(holder)
-  const { reg } = harness({ tools: tools.view, config: () => ({ workspaceMode: 'always', cleanupMode: 'off', nodePath: '', runtimeVersion: '0.4.0' }) })
+  const { reg } = harness({ config: () => ({ workspaceMode: 'always', cleanupMode: 'off', nodePath: '', runtimeVersion: '0.4.0' }) })
   const task = await reg.open({}, 's1', { path: 'a.docx', cwd: source, mode: 'edit' })
-  holder.root = task.root
   const saved = await reg.checkpoint('s1', task.taskId)
 
   assert.ok(task.workspaceDir !== null)
@@ -115,23 +107,20 @@ test('检查点落在工作文件夹 checkpoints/ 下并写进台账', async () 
 })
 
 test('替换原文件前必须有 confirm，否则不导出也不动原件', async () => {
-  const tools = fakeTools()
-  const { reg, disposed } = harness({ tools: tools.view })
+  const { reg, disposed, calls } = harness()
   const task = await reg.open({}, 's1', { path: 'a.docx', cwd: 'C:/d', mode: 'edit' })
   await assert.rejects(
     () => reg.replace('s1', task.taskId, {}),
     (error: never) => (error as { code?: string }).code === 'confirm-required',
   )
-  assert.deepEqual(tools.calls, [{ name: 'mcp__bo_a71c2e90__office_open', args: { path: 'a.docx' } }])
+  assert.deepEqual(calls, [{ name: 'office_open', args: { path: 'a.docx' } }])
   assert.deepEqual(disposed, [])
 })
 
 test('confirm 为 true 时先导出草稿到中转目录再交给替换事务', async () => {
   const root = await mkdtemp(join(tmpdir(), 'bo-rep-'))
-  const tools = exportingTools({ root })
   const replaced: { input: unknown; home: string; hasRecycle: boolean }[] = []
-  const { reg } = harness({
-    tools: tools.view,
+  const { reg, calls } = harness({
     makeTempDir: async () => root,
     home: root,
     replaceFile: async (input, deps) => {
@@ -144,8 +133,8 @@ test('confirm 为 true 时先导出草稿到中转目录再交给替换事务', 
   const outcome = await reg.replace('s1', task.taskId, { confirm: true })
 
   const staging = join(root, '.deliver', 'a.docx')
-  assert.deepEqual(tools.calls.at(-1), {
-    name: 'mcp__bo_a71c2e90__office_export',
+  assert.deepEqual(calls.at(-1), {
+    name: 'office_export',
     args: { document: 'doc1', path: '.deliver/a.docx' },
   })
   assert.deepEqual(replaced.map((item) => item.input), [
@@ -172,18 +161,14 @@ test('只读任务不允许替换原文件', async () => {
 })
 
 test('临时目录编辑的检查点落在临时目录 checkpoints/ 下且不记账', async () => {
-  const holder = { root: '' }
-  const tools = exportingTools(holder)
   let tempDir = ''
   const { reg } = harness({
-    tools: tools.view,
     makeTempDir: async () => {
       tempDir = await mkdtemp(join(tmpdir(), 'bo-cpt-'))
       return tempDir
     },
   })
   const task = await reg.open({}, 's1', { path: 'a.docx', cwd: 'C:/d', mode: 'edit' })
-  holder.root = tempDir
   const saved = await reg.checkpoint('s1', task.taskId)
   assert.equal(dirname(saved.path), join(tempDir, 'checkpoints'))
   assert.ok(existsSync(saved.path))

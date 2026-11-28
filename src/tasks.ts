@@ -8,8 +8,8 @@ import { cleanupWorkspace, type CleanupDecision } from './cleanup.js'
 import type { ConfigData } from './config.js'
 import { pickDeliveryTarget, type Delivery } from './deliver.js'
 import { DomainError } from './errors.js'
-import { createToolInvoker, readToolJson, waitForTool, type ToolView } from './invoke.js'
-import type { MountHandle, MountSpec } from './mount.js'
+import { readToolJson } from './invoke.js'
+import type { McpConnection, McpSpawnSpec } from './mcp.js'
 import { sha256File, type ResolvedDoc } from './paths.js'
 import { replaceOriginal } from './replace.js'
 import { planRoot, type RootKind, type RootPlan } from './root.js'
@@ -57,23 +57,21 @@ export type TaskRecord = {
   createdAt: Date
 }
 
-type Entry = { record: TaskRecord; handle: MountHandle; tempDir: string | null; scope: unknown }
+type Entry = { record: TaskRecord; connection: McpConnection; tempDir: string | null }
 
 export type ReplaceOutcome = { taskId: string; path: string; sha256: string; bytes: number }
 
 export type TaskRegistryDeps = {
-  mounter: { mount(scope: unknown, spec: MountSpec): Promise<MountHandle> }
+  connector: { connect(spec: McpSpawnSpec): Promise<McpConnection> }
   resolveRuntime: () => { command: string; cliPath: string }
   config: () => ConfigData
   makeTempDir: () => Promise<string>
   now: () => Date
   newTaskId: () => string
   resolveDocument: (path: string, cwd: string) => Promise<ResolvedDoc>
-  toolViewFor?: (scope: unknown) => ToolView | undefined
   copyFile?: (from: string, to: string) => Promise<void>
   copyExcl?: (from: string, to: string) => Promise<void>
   createWorkspaceDir?: typeof createWorkspace
-  waitToolTimeoutMs?: number
   home?: string
   recycle?: (path: string) => Promise<void>
   replaceFile?: typeof replaceOriginal
@@ -151,7 +149,7 @@ export function createTaskRegistry(deps: TaskRegistryDeps): TaskRegistry {
   async function disposeEntry(entry: Entry, discard?: boolean): Promise<void> {
     entries.delete(entry.record.taskId)
     try {
-      await entry.handle.dispose()
+      await entry.connection.close()
     } catch (error) {
       deps.logger?.(`关闭 ${entry.record.serverName} 时出错`, error)
     }
@@ -164,18 +162,13 @@ export function createTaskRegistry(deps: TaskRegistryDeps): TaskRegistry {
   }
 
   async function openInMcp(
-    scope: unknown,
-    serverName: string,
+    connection: McpConnection,
     root: string,
     openedPath: string,
     rollback: () => Promise<void>,
   ): Promise<string> {
-    const tools = deps.toolViewFor?.(scope)
-    if (tools === undefined) return ''
-    const toolName = `mcp__${serverName}__office_open`
     try {
-      await waitForTool(tools, scope, toolName, { timeoutMs: deps.waitToolTimeoutMs ?? 15_000 })
-      const result = await createToolInvoker(tools, scope).invoke(toolName, {
+      const result = await connection.call('office_open', {
         path: mcpRelativePath(root, openedPath),
       })
       const payload = readToolJson(result) as { document?: unknown } | undefined
@@ -193,7 +186,7 @@ export function createTaskRegistry(deps: TaskRegistryDeps): TaskRegistry {
   }
 
   return {
-    async open(scope, sessionId, input) {
+    async open(_scope, sessionId, input) {
       await deps.awaitRecovery?.()
       const mode = input.mode ?? 'read'
       const doc = await deps.resolveDocument(input.path, input.cwd)
@@ -242,9 +235,9 @@ export function createTaskRegistry(deps: TaskRegistryDeps): TaskRegistry {
       }
 
       const runtime = deps.resolveRuntime()
-      let handle: MountHandle
+      let connection: McpConnection
       try {
-        handle = await deps.mounter.mount(scope, {
+        connection = await deps.connector.connect({
           serverName,
           command: runtime.command,
           args: [runtime.cliPath, ...plan.args],
@@ -256,7 +249,7 @@ export function createTaskRegistry(deps: TaskRegistryDeps): TaskRegistry {
       }
 
       const rollback = async (): Promise<void> => {
-        await handle.dispose().catch((error: unknown) => {
+        await connection.close().catch((error: unknown) => {
           deps.logger?.(`回滚 ${serverName} 时出错`, error)
         })
         if (tempDir !== null) await rm(tempDir, { recursive: true, force: true }).catch(() => undefined)
@@ -279,7 +272,7 @@ export function createTaskRegistry(deps: TaskRegistryDeps): TaskRegistry {
         }
       }
 
-      const documentId = await openInMcp(scope, serverName, plan.root, openedPath, rollback)
+      const documentId = await openInMcp(connection, plan.root, openedPath, rollback)
 
       const record: TaskRecord = {
         taskId,
@@ -294,7 +287,7 @@ export function createTaskRegistry(deps: TaskRegistryDeps): TaskRegistry {
         workspaceDir: plan.rootKind === 'workspace' ? plan.root : null,
         createdAt: deps.now(),
       }
-      entries.set(taskId, { record, handle, tempDir, scope })
+      entries.set(taskId, { record, connection, tempDir })
       return record
     },
 
@@ -303,10 +296,6 @@ export function createTaskRegistry(deps: TaskRegistryDeps): TaskRegistry {
       const { record } = entry
       if (record.readOnly) {
         throw new DomainError('checkpoint-failed', '只读任务不产出检查点；请用 mode:"edit" 打开后再存档。')
-      }
-      const tools = deps.toolViewFor?.(entry.scope)
-      if (tools === undefined) {
-        throw new DomainError('checkpoint-failed', '宿主没有提供工具视图，无法导出检查点')
       }
       const dir =
         record.workspaceDir === null
@@ -325,7 +314,7 @@ export function createTaskRegistry(deps: TaskRegistryDeps): TaskRegistry {
         },
         stat: async (path) => ({ size: (await stat(path)).size }),
         sha256: sha256File,
-        invoke: (name, args) => createToolInvoker(tools, entry.scope).invoke(name, args),
+        invoke: (name, args) => entry.connection.call(name, args),
       })
       if (record.workspaceDir !== null) {
         try {
@@ -343,10 +332,6 @@ export function createTaskRegistry(deps: TaskRegistryDeps): TaskRegistry {
       if (record.readOnly) {
         throw new DomainError('deliver-failed', '只读任务不产出新文件；请用 mode:"edit" 打开后再改。')
       }
-      const tools = deps.toolViewFor?.(entry.scope)
-      if (tools === undefined) {
-        throw new DomainError('deliver-failed', '宿主没有提供工具视图，无法导出草稿')
-      }
       const deliveryDir = resolve(record.doc.dir, input?.dir ?? '.')
       assertInsideDir(record.doc.dir, deliveryDir)
       await mkdir(deliveryDir, { recursive: true })
@@ -355,10 +340,7 @@ export function createTaskRegistry(deps: TaskRegistryDeps): TaskRegistry {
         const staging = pickDeliveryTarget(stagingDir, record.doc.name, existsSync)
         await mkdir(stagingDir, { recursive: true })
         const relativePath = relative(record.root, staging.path).split('\\').join('/')
-        await createToolInvoker(tools, entry.scope).invoke(
-          `mcp__${record.serverName}__office_export`,
-          { document: record.documentId, path: relativePath },
-        )
+        await entry.connection.call('office_export', { document: record.documentId, path: relativePath })
         const info = await stat(staging.path).catch(() => {
           throw new DomainError('deliver-failed', `BetterOffice 没有写出草稿：${staging.path}`)
         })
@@ -402,20 +384,13 @@ export function createTaskRegistry(deps: TaskRegistryDeps): TaskRegistry {
       if (recycle === undefined) {
         throw new DomainError('recycle-unavailable', '没有可用的回收站实现，只能另存为新文件。')
       }
-      const tools = deps.toolViewFor?.(entry.scope)
-      if (tools === undefined) {
-        throw new DomainError('replace-failed', '宿主没有提供工具视图，无法导出草稿')
-      }
       const stagingDir = join(record.root, STAGING_DIR)
       const candidate = join(stagingDir, record.doc.name)
       try {
         await mkdir(stagingDir, { recursive: true })
         await rm(candidate, { force: true })
         const relativePath = relative(record.root, candidate).split('\\').join('/')
-        await createToolInvoker(tools, entry.scope).invoke(
-          `mcp__${record.serverName}__office_export`,
-          { document: record.documentId, path: relativePath },
-        )
+        await entry.connection.call('office_export', { document: record.documentId, path: relativePath })
         await stat(candidate).catch(() => {
           throw new DomainError('replace-failed', `BetterOffice 没有写出草稿：${candidate}`)
         })

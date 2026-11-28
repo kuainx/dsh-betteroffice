@@ -45,7 +45,7 @@ export async function createCheckpoint(deps: CheckpointDeps): Promise<Checkpoint
     if (deps.exists(path)) continue
     const relPath = relativePath(deps.root, path).replaceAll('\\', '/')
     try {
-      await deps.invoke(`mcp__${deps.serverName}__office_export`, {
+      await deps.invoke('office_export', {
         document: deps.documentId,
         path: relPath,
       })

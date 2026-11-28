@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pickDeliveryTarget } from '../src/deliver.js'
 import { readLedger } from '../src/workspace.js'
-import { exportingTools, harness } from './tasks-harness.js'
+import { harness } from './tasks-harness.js'
 
 const noFiles = (): boolean => false
 
@@ -33,14 +33,8 @@ test('交付把草稿另存到目标目录并清掉中转文件', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'bo-doc-'))
   await writeFile(join(dir, 'a.docx'), 'source-bytes')
   const outDir = join(dir, 'out')
-  const holder = { root: '' }
-  const tools = exportingTools(holder)
   const { reg } = harness({
-    tools: tools.view,
-    makeTempDir: async () => {
-      holder.root = await mkdtemp(join(tmpdir(), 'bo-dlv-'))
-      return holder.root
-    },
+    makeTempDir: async () => mkdtemp(join(tmpdir(), 'bo-dlv-')),
   })
   const task = await reg.open({}, 's1', { path: 'a.docx', cwd: dir, mode: 'edit' })
 
@@ -54,7 +48,7 @@ test('交付把草稿另存到目标目录并清掉中转文件', async () => {
 test('交付目录越出源文件目录时拒绝', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'bo-doc-out-'))
   await writeFile(join(dir, 'a.docx'), 'source-bytes')
-  const { reg } = harness({ tools: exportingTools({ root: '' }).view })
+  const { reg } = harness()
   const task = await reg.open({}, 's1', { path: 'a.docx', cwd: dir, mode: 'edit' })
   await assert.rejects(() => reg.deliver('s1', task.taskId, { dir: '..\\elsewhere' }), /只能在源文件所在目录/)
 })
@@ -68,14 +62,10 @@ test('只读任务不提供交付', async () => {
 test('交付成功后写进工作文件夹台账', async () => {
   const source = await mkdtemp(join(tmpdir(), 'bo-dl-'))
   await writeFile(join(source, 'a.docx'), 'source-bytes')
-  const holder = { root: '' }
-  const tools = exportingTools(holder)
   const { reg } = harness({
-    tools: tools.view,
     config: () => ({ workspaceMode: 'always', cleanupMode: 'off', nodePath: '', runtimeVersion: '0.4.0' }),
   })
   const task = await reg.open({}, 's1', { path: 'a.docx', cwd: source, mode: 'edit' })
-  holder.root = task.root
   const outDir = join(source, 'out')
   const delivered = await reg.deliver('s1', task.taskId, { dir: outDir })
   const ledger = await readLedger(task.workspaceDir as string)
