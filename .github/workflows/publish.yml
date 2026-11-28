@@ -12,7 +12,6 @@ on:
 
 concurrency:
   group: publish
-  cancel-in-progress: false
 
 permissions:
   contents: write # 需要自己推 tag
@@ -23,8 +22,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - name: 读 package.json 的版本
         id: pkg
@@ -62,10 +59,9 @@ jobs:
         run: npm install --global npm@11
 
       - if: steps.skip.outputs.skip == 'false'
-        run: npm ci
-
-      - if: steps.skip.outputs.skip == 'false'
-        run: npm run check
+        run: |
+          npm ci
+          npm run check
 
       - name: 没有 tag 就补一个（main 触发时）
         if: steps.skip.outputs.skip == 'false' && startsWith(github.ref, 'refs/heads/')
@@ -79,4 +75,4 @@ jobs:
           fi
 
       - if: steps.skip.outputs.skip == 'false'
-        run: npm publish --provenance --access public
+        run: npm publish --provenance
