@@ -1,6 +1,10 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { mkdtemp } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { apply } from '../src/index.js'
+import type { ToolDefinition } from '../src/tools.js'
 
 type FakeContext = {
   on(event: string, handler: (...args: unknown[]) => void): () => void
@@ -59,6 +63,26 @@ test('apply 把配置卡片的两条路由挂到宿主 webServer 上', () => {
   )
 })
 
+test('宿主只有 commands 没有 settings 时也注册 /betteroffice', () => {
+  const injected: string[][] = []
+  const names: string[] = []
+  const { ctx } = fakeContext(
+    {
+      commands: {
+        register: (definition: { name: string }) => {
+          names.push(definition.name)
+          return () => {}
+        },
+      },
+    },
+    injected,
+  )
+  apply(ctx as never, undefined)
+  const commandDeps = injected.find(deps => deps.includes('commands'))
+  assert.deepEqual(commandDeps, ['commands'], '设置服务是可选的，不该成为注册命令的前提')
+  assert.deepEqual(names, ['betteroffice'])
+})
+
 test('apply 订阅 agent 生命周期并注册总清理', () => {
   const { ctx, listeners, cleanups } = fakeContext()
   apply(ctx as never, undefined)
@@ -103,6 +127,45 @@ test('pre-execute 挡住 agent 直接调 MCP 的导出与列目录工具', async
   }
   const allowed = await hook({ name: 'mcp__bo_a71c2e90__office_read' }, () => 'next')
   assert.equal(allowed, 'next')
+})
+
+test('open 的相对路径按调用时的会话工作目录解析', async () => {
+  const definitions: ToolDefinition[] = []
+  const cwdA = await mkdtemp(join(tmpdir(), 'bo-cwd-a-'))
+  const cwdB = await mkdtemp(join(tmpdir(), 'bo-cwd-b-'))
+  const { ctx, listeners } = fakeContext({
+    tools: {
+      register: (definition: ToolDefinition) => {
+        definitions.push(definition)
+        return () => {}
+      },
+    },
+  })
+  apply(ctx as never, undefined)
+
+  const agent = {
+    id: 's1',
+    session: { id: 's1', header: { cwd: cwdA } },
+    ctx: { get: () => undefined },
+  }
+  for (const handler of listeners.get('agent/created') ?? []) handler({ agent })
+  await new Promise(resolve => setTimeout(resolve, 0))
+
+  const open = definitions.find(definition => definition.name === 'betteroffice_open')
+  assert.ok(open !== undefined)
+
+  const missing = async (): Promise<string> => {
+    try {
+      await open.execute({ path: 'nope.docx' }, {})
+    } catch (error) {
+      return (error as Error).message
+    }
+    return ''
+  }
+
+  assert.ok((await missing()).includes(join(cwdA, 'nope.docx')), '第一次应该解析到注册时的目录')
+  agent.session.header.cwd = cwdB
+  assert.ok((await missing()).includes(join(cwdB, 'nope.docx')), '切了工作目录之后要按新的解析')
 })
 
 test('agent/created 缺 tools 服务时只记日志不抛错', async () => {

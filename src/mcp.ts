@@ -34,6 +34,8 @@ export type McpConnectorDeps = {
   spawn?: SpawnLike
   startupTimeoutMs?: number
   callTimeoutMs?: number
+  /** close 等子进程退出的兜底时限；到点还在就放弃等。 */
+  closeTimeoutMs?: number
   logger?: (message: string, error?: unknown) => void
 }
 
@@ -46,6 +48,8 @@ const PROTOCOL_VERSION = '2024-11-05'
 const CLIENT_INFO = { name: 'dsh-betteroffice', version: '0.1.0' }
 const DEFAULT_STARTUP_TIMEOUT_MS = 30_000
 const DEFAULT_CALL_TIMEOUT_MS = 120_000
+/** close 最多等子进程退出这么久：等的是「文件句柄放开了」，不是「它愿意退出」。 */
+const DEFAULT_CLOSE_TIMEOUT_MS = 2_000
 
 type Pending = {
   resolve(value: unknown): void
@@ -80,6 +84,11 @@ export function createConnector(deps: McpConnectorDeps = {}): McpConnector {
 
   async function connect(spec: McpSpawnSpec): Promise<McpConnection> {
     const child = spawnFn(spec.command, spec.args, { cwd: spec.cwd, stdio: ['pipe', 'pipe', 'pipe'] })
+    // close() 要等它真的走了再让调用方删临时目录，否则 Windows 上句柄还占着，rm 会失败。
+    const exited = new Promise<void>((resolve) => {
+      child.on('exit', () => resolve())
+      child.on('error', () => resolve())
+    })
     const pending = new Map<number, Pending>()
     let nextId = 1
     let closed = false
@@ -212,6 +221,15 @@ export function createConnector(deps: McpConnectorDeps = {}): McpConnector {
         child.stdin.end?.()
         child.kill()
         live.delete(spec.serverName)
+        const timeoutMs = deps.closeTimeoutMs ?? DEFAULT_CLOSE_TIMEOUT_MS
+        await new Promise<void>((resolve) => {
+          const timer = setTimeout(resolve, timeoutMs)
+          timer.unref?.()
+          void exited.then(() => {
+            clearTimeout(timer)
+            resolve()
+          })
+        })
       },
     }
 

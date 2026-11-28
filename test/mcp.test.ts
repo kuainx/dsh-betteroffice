@@ -35,6 +35,8 @@ class FakeChild extends EventEmitter {
 
   kill(): void {
     this.killed = true
+    // 真进程被 kill 之后也会发 exit；假件跟上，别让 close 白等兜底时限。
+    queueMicrotask(() => this.emit('exit', 0))
   }
 
   reply(message: JsonObject): void {
@@ -42,11 +44,15 @@ class FakeChild extends EventEmitter {
   }
 }
 
-function connect(t: string, options: { answerInitialize?: boolean; startupTimeoutMs?: number } = {}) {
+function connect(
+  t: string,
+  options: { answerInitialize?: boolean; startupTimeoutMs?: number; closeTimeoutMs?: number } = {},
+) {
   const child = new FakeChild(options.answerInitialize ?? true)
   const connector = createConnector({
     spawn: () => child,
     startupTimeoutMs: options.startupTimeoutMs,
+    closeTimeoutMs: options.closeTimeoutMs,
   })
   return { child, connector, ready: connector.connect({ serverName: 'bo_test', command: 'node', args: ['cli.js'], cwd: '.' }) }
 }
@@ -146,6 +152,32 @@ describe('MCP 连接器', () => {
       assert.equal(error.code, 'mcp-disconnected')
       return true
     })
+  })
+
+  test('close 等子进程真正退出后才返回，别让调用方立刻去删临时目录', async () => {
+    const { child, ready } = connect('close-wait', { closeTimeoutMs: 1000 })
+    const connection = await ready
+
+    let exited = false
+    child.kill = () => {
+      setTimeout(() => {
+        exited = true
+        child.emit('exit', 0)
+      }, 20)
+    }
+
+    await connection.close()
+    assert.equal(exited, true, 'close 返回时子进程应该已经退出')
+  })
+
+  test('子进程不肯退出时 close 也不无限等', async () => {
+    const { child, ready } = connect('close-stuck', { closeTimeoutMs: 20 })
+    const connection = await ready
+    child.kill = () => {}
+
+    const started = Date.now()
+    await connection.close()
+    assert.ok(Date.now() - started < 1000, '没有退出事件也要在兜底时限后返回')
   })
 
   test('list 发 tools/list 并把结果原样返回', async () => {

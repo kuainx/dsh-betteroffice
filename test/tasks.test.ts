@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { existsSync } from 'node:fs'
-import { mkdtemp, writeFile } from 'node:fs/promises'
+import { mkdtemp, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { sha256File } from '../src/paths.js'
@@ -103,6 +103,22 @@ test('office_open 失败时关掉连接、删掉临时目录、不留记录', as
   assert.deepEqual(disposed, ['bo_a71c2e90'])
   assert.deepEqual(reg.list('s1'), [])
   assert.equal(existsSync(tempDir), false)
+})
+
+test('交付目录是链接时按真实路径校验，别把文件扔到源目录外面', async () => {
+  const source = await mkdtemp(join(tmpdir(), 'bo-link-src-'))
+  const outside = await mkdtemp(join(tmpdir(), 'bo-link-out-'))
+  await symlink(outside, join(source, 'link'), 'junction')
+  const { reg } = harness({
+    makeTempDir: async () => mkdtemp(join(tmpdir(), 'bo-link-root-')),
+  })
+  const task = await reg.open({}, 's1', { path: 'a.docx', cwd: source, mode: 'edit' })
+
+  await assert.rejects(
+    () => reg.deliver('s1', task.taskId, { dir: 'link' }),
+    (error: { code?: string }) => error.code === 'delivery-outside',
+  )
+  assert.equal(existsSync(join(outside, 'a.docx')), false)
 })
 
 test('检查点落在工作文件夹 checkpoints/ 下并写进台账', async () => {

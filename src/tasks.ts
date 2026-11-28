@@ -1,7 +1,7 @@
 /** 任务注册表：一个任务 = 一个文档身份 + 一个 MCP 实例，绑定到发起打开的会话。 */
 
 import { constants, existsSync } from 'node:fs'
-import { copyFile, mkdir, readdir, rm, stat } from 'node:fs/promises'
+import { copyFile, mkdir, readdir, realpath, rm, stat } from 'node:fs/promises'
 import { basename, isAbsolute, join, relative, resolve } from 'node:path'
 import { createCheckpoint, type Checkpoint } from './checkpoint.js'
 import { cleanupWorkspace, type CleanupDecision } from './cleanup.js'
@@ -345,6 +345,8 @@ export function createTaskRegistry(deps: TaskRegistryDeps): TaskRegistry {
       const deliveryDir = resolve(record.doc.dir, input?.dir ?? '.')
       assertInsideDir(record.doc.dir, deliveryDir)
       await mkdir(deliveryDir, { recursive: true })
+      // 上面只比了字面路径；目录可能是链接/junction，按真实路径再核一次，别把文件送到源目录外面。
+      assertInsideDir(await realpath(record.doc.dir), await realpath(deliveryDir))
       const stagingDir = join(record.root, STAGING_DIR)
       try {
         const staging = pickDeliveryTarget(stagingDir, record.doc.name, existsSync)

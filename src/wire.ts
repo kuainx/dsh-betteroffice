@@ -18,22 +18,49 @@ export interface WireOptions {
   getRegistry?(): Promise<string>
 }
 
+/** 外部命令的兜底时限：npm 卡在代理认证或 registry 无响应时，不能让 Promise 永远悬着。 */
+const DEFAULT_SPAWN_TIMEOUT_MS = 120_000
+
+/** 到点杀掉子进程；返回清理函数，正常结束时调用方要清掉定时器。 */
+function armTimeout(child: { kill(): unknown }, timeoutMs: number, onTimeout: () => void): () => void {
+  const timer = setTimeout(() => {
+    child.kill()
+    onTimeout()
+  }, timeoutMs)
+  timer.unref?.()
+  return () => clearTimeout(timer)
+}
+
+function timeoutNote(timeoutMs: number, hint: string): string {
+  return `\n（超时：${Math.round(timeoutMs / 1000)} 秒内没有结束，已终止。${hint}）`
+}
+
 /** 用 `npm` 装包：stdio 收进内存，退出码决定成败。 */
-export function runNpm(command: string, args: string[], options: { cwd: string }): Promise<RunResult> {
+export function runNpm(
+  command: string,
+  args: string[],
+  options: { cwd: string; timeoutMs?: number },
+): Promise<RunResult> {
+  const timeoutMs = options.timeoutMs ?? DEFAULT_SPAWN_TIMEOUT_MS
   return new Promise<RunResult>(resolve => {
     const child = spawnPortable(command, args, {
       cwd: options.cwd,
       stdio: ['ignore', 'pipe', 'pipe'],
     })
     let stderr = ''
+    const stop = armTimeout(child, timeoutMs, () => {
+      resolve({ code: -1, stderr: `${stderr}${timeoutNote(timeoutMs, '检查网络、代理或 npm 登录状态')}` })
+    })
     child.stdout?.on('data', () => {})
     child.stderr?.on('data', chunk => {
       stderr += String(chunk)
     })
     child.on('error', error => {
+      stop()
       resolve({ code: -1, stderr: `${stderr}\n${error.message}` })
     })
     child.on('close', code => {
+      stop()
       resolve({ code: code ?? -1, stderr })
     })
   })
@@ -43,8 +70,9 @@ export function runNpm(command: string, args: string[], options: { cwd: string }
 export function runPowershell(
   command: string,
   args: readonly string[],
-  options: { env: Record<string, string> },
+  options: { env: Record<string, string>; timeoutMs?: number },
 ): Promise<{ code: number; stderr: string; stdout: string }> {
+  const timeoutMs = options.timeoutMs ?? DEFAULT_SPAWN_TIMEOUT_MS
   return new Promise(resolve => {
     const child = spawnPortable(command, [...args], {
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -52,6 +80,9 @@ export function runPowershell(
     })
     let stdout = ''
     let stderr = ''
+    const stop = armTimeout(child, timeoutMs, () => {
+      resolve({ code: -1, stderr: `${stderr}${timeoutNote(timeoutMs, '回收站调用没响应')}`, stdout })
+    })
     child.stdout?.on('data', chunk => {
       stdout += String(chunk)
     })
@@ -59,27 +90,36 @@ export function runPowershell(
       stderr += String(chunk)
     })
     child.on('error', error => {
+      stop()
       resolve({ code: -1, stderr: `${stderr}\n${error.message}`, stdout })
     })
     child.on('close', code => {
+      stop()
       resolve({ code: code ?? -1, stderr, stdout })
     })
   })
 }
 
 /** 读 npm 自己配置的源（`npm config get registry`）；读不到返回空串。 */
-export function readNpmRegistry(cwd: string): Promise<string> {
+export function readNpmRegistry(cwd: string, timeoutMs = DEFAULT_SPAWN_TIMEOUT_MS): Promise<string> {
   return new Promise<string>(resolve => {
     const child = spawnPortable('npm', ['config', 'get', 'registry'], {
       cwd,
       stdio: ['ignore', 'pipe', 'pipe'],
     })
     let stdout = ''
+    const stop = armTimeout(child, timeoutMs, () => resolve(''))
     child.stdout?.on('data', chunk => {
       stdout += String(chunk)
     })
-    child.on('error', () => resolve(''))
-    child.on('close', code => resolve(code === 0 ? stdout : ''))
+    child.on('error', () => {
+      stop()
+      resolve('')
+    })
+    child.on('close', code => {
+      stop()
+      resolve(code === 0 ? stdout : '')
+    })
   })
 }
 

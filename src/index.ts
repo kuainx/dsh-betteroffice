@@ -208,22 +208,23 @@ export function apply(ctx: Context, config?: ConfigData): void {
       log('宿主没有提供 tools 服务，跳过 BetterOffice 工具注册')
       return
     }
-    const cwd = agent.session?.header?.cwd ?? process.cwd()
+    // 取时求值：会话里切了工作目录，相对路径要跟着新目录走，别钉在注册那一刻。
+    const cwd = (): string => agent.session?.header?.cwd ?? process.cwd()
     try {
       registerTools(tools, {
         registry,
         sessionId,
         config: currentConfig,
         scope,
-        cwd: () => cwd,
+        cwd,
       })
     } catch (error) {
       log(`为会话 ${sessionId} 注册 BetterOffice 工具失败`, error)
     }
   }
 
-  // `/betteroffice` 只在宿主同时提供 commands 与 settings 时注册：配置项的写入要落进设置里。
-  host.inject?.(['commands', 'settings'], scoped => {
+  // `/betteroffice` 只要有 commands 就能注册：设置服务是可选的，缺了配置项就只落插件自己的记录。
+  host.inject?.(['commands'], scoped => {
     const commands = (scoped.get('commands') ?? host.get('commands')) as CommandApi | undefined
     if (commands === undefined || typeof commands.register !== 'function') {
       log('宿主没有提供 commands 服务，/betteroffice 命令不可用')
