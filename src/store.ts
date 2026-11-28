@@ -72,11 +72,3 @@ export function writeStored(home: string, patch: Partial<StoredSettings>, deps: 
   deps.mkdir(dir)
   deps.write(storePath(home), `${JSON.stringify(text, null, 2)}\n`)
 }
-
-export function readStoredVersion(home: string, deps: ReadDeps): string {
-  return readStored(home, deps).runtimeVersion
-}
-
-export function writeStoredVersion(home: string, version: string, deps: WriteDeps): void {
-  writeStored(home, { runtimeVersion: version }, deps)
-}

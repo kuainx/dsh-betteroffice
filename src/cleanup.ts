@@ -7,15 +7,12 @@ export type CleanupMode = 'off' | 'auto' | 'on'
 
 export type CleanupDecision = { remove: boolean; reason: string }
 
-/** 目录自身占位符：某些平台上递归列举也会带回目录名。 */
-const DIR_MARKERS = ['draft', 'checkpoints'] as const
-
 function normalize(path: string): string {
   return path.split('\\').join('/')
 }
 
 function allowedFiles(ledger: TaskLedger): Set<string> {
-  const allowed = new Set<string>([LEDGER_FILE, ...DIR_MARKERS])
+  const allowed = new Set<string>([LEDGER_FILE])
   allowed.add(`draft/${basename(ledger.sourcePath)}`)
   for (const checkpoint of ledger.checkpoints ?? []) allowed.add(`checkpoints/${checkpoint.name}`)
   return allowed
@@ -40,7 +37,13 @@ export function cleanupDecision(opts: {
   if (unknown.length > 0) {
     return { remove: false, reason: `有未登记的文件，保留目录：${unknown.slice(0, 3).join('、')}` }
   }
-  return { remove: true, reason: '草稿已交付且目录里没有未登记的文件' }
+  return {
+    remove: true,
+    reason:
+      opts.discard === true
+        ? '用户放弃草稿，且目录里没有未登记的文件'
+        : '草稿已交付且目录里没有未登记的文件',
+  }
 }
 
 export async function cleanupWorkspace(opts: {

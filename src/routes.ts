@@ -4,7 +4,7 @@ import type { ConfigData } from './config.js'
 import { buildStatus, parseAction } from './control.js'
 import type { ActionRequest, StatusSnapshot } from './control.js'
 import { DomainError } from './errors.js'
-import { MIN_NODE_VERSION, compareVersions, satisfiesNode } from './runtime.js'
+import { changeKind, compareVersions, nodeGate, rollbackGate } from './runtime.js'
 
 export interface ControlDeps {
   home: string
@@ -27,26 +27,17 @@ export interface ControlDeps {
 
 export type ApiResult = { status: 200 | 400 | 409 | 500; body: unknown }
 
-/** 这几类错误是用户输入或时机的错，回 400；安装中的撞车回 409；其余一律 500。 */
-const BAD_REQUEST_CODES = new Set([
-  'invalid-action',
-  'invalid-version',
-  'invalid-settings',
-  'rollback-unknown',
-  'node-too-old',
-])
+/** 用户侧错误自带状态码（见 DomainError.status），其余一律 500。 */
+function statusOf(error: unknown): 400 | 409 | 500 {
+  if (!(error instanceof DomainError)) return 500
+  return error.status ?? 500
+}
 
 const WORKSPACE_TEXT: Record<string, string> = { auto: '自动', never: '不使用', always: '强制使用' }
 const CLEANUP_TEXT: Record<string, string> = { off: '不删除', auto: '自动删除', on: '总是删除' }
 
 function fail(status: 400 | 409 | 500, error: unknown): ApiResult {
   return { status, body: { ok: false, error: error instanceof Error ? error.message : String(error) } }
-}
-
-function statusOf(error: unknown): 400 | 409 | 500 {
-  if (!(error instanceof DomainError)) return 500
-  if (error.code === 'in-flight') return 409
-  return BAD_REQUEST_CODES.has(error.code) ? 400 : 500
 }
 
 /** 宿主 webServer 的最小形状：register 返回**一个**注销函数（不是数组）。 */
@@ -141,7 +132,7 @@ export function createControlApi(deps: ControlDeps): {
 } {
   function ensureIdle(version: string): void {
     if (deps.inFlight().includes(version)) {
-      throw new DomainError('in-flight', `${version} 正在安装中，等它跑完再点一次就好。`)
+      throw new DomainError('in-flight', `${version} 正在安装中，等它跑完再点一次就好。`, { status: 409 })
     }
   }
 
@@ -155,42 +146,36 @@ export function createControlApi(deps: ControlDeps): {
     return `已是最新：${current}。`
   }
 
-  async function switchTo(request: ActionRequest, version: string): Promise<string> {
-    // 命令侧先过 Node 门禁（src/commands.ts），卡片这边没有就会装出一份跑不起来的运行时。
-    if (!satisfiesNode(deps.nodeVersion)) {
-      throw new DomainError(
-        'node-too-old',
-        `当前 Node 是 ${deps.nodeVersion}，BetterOffice 需要 ≥${MIN_NODE_VERSION}。请升级 Node.js，或在设置里填写 node 路径。`,
-      )
-    }
+  async function switchTo(mode: 'install' | 'update' | 'rollback', version: string): Promise<string> {
+    // 命令侧与卡片侧共用同一句 Node 门禁；缺了会装出一份跑不起来的运行时。
+    const tooOld = nodeGate(deps.nodeVersion)
+    if (tooOld !== undefined) throw new DomainError('node-too-old', tooOld, { status: 400 })
     ensureIdle(version)
+    const before = deps.getConfig().runtimeVersion.trim()
     const result = await deps.install(version, await deps.resolveRegistry())
     await deps.saveRuntimeVersion(result.version)
-    if (request.action === 'update') return `已更新到 ${result.version}。`
-    if (request.action === 'rollback') return `已切回 ${result.version}。`
+    const change = changeKind(before, result.version)
+    if (change === 'same') return `已经是 ${result.version}，没有变化。`
+    if (change === 'downgrade') return `已降到 ${result.version}。`
+    if (mode === 'update') return `已更新到 ${result.version}。`
+    if (mode === 'rollback') return `已切回 ${result.version}。`
     return `已安装 ${result.version}，并切到该版本。`
   }
 
   async function run(request: ActionRequest): Promise<string> {
     if (request.action === 'settings') {
-      const patch = request.settings ?? { workspaceMode: '', cleanupMode: '', registry: '' }
+      const patch = request.settings
       await deps.saveSettings(patch)
       const source = patch.registry === '' ? '默认（跟随 npm 配置）' : patch.registry
       return `已保存：工作文件夹 ${WORKSPACE_TEXT[patch.workspaceMode] ?? patch.workspaceMode}，清理模式 ${CLEANUP_TEXT[patch.cleanupMode] ?? patch.cleanupMode}，运行时源 ${source}。`
     }
     if (request.action === 'check') return check()
     if (request.action === 'rollback') {
-      const version = request.version ?? ''
-      const installed = deps.installedVersions()
-      if (!installed.includes(version)) {
-        throw new DomainError(
-          'rollback-unknown',
-          `回退只能选已安装的版本：${installed.length === 0 ? '（还没装任何版本）' : installed.join(' / ')}。`,
-        )
-      }
-      return switchTo(request, version)
+      const problem = rollbackGate(deps.installedVersions(), request.version)
+      if (problem !== undefined) throw new DomainError('rollback-unknown', problem, { status: 400 })
+      return switchTo('rollback', request.version)
     }
-    return switchTo(request, request.version ?? (await deps.latestVersion(await deps.resolveRegistry())))
+    return switchTo(request.action, request.version ?? (await deps.latestVersion(await deps.resolveRegistry())))
   }
 
   return {

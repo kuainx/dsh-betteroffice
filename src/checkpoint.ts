@@ -39,8 +39,10 @@ export async function createCheckpoint(deps: CheckpointDeps): Promise<Checkpoint
     throw new DomainError('checkpoint-failed', `无法创建检查点目录：${deps.dir}（${String(error)}）`)
   }
 
+  // 一次检查点只取一次时间：文件名里的时间戳与 createdAt 必须是同一刻。
+  const at = deps.now()
   for (let version = 1; version <= 999; version += 1) {
-    const name = checkpointName(deps.sourceName, deps.now(), version)
+    const name = checkpointName(deps.sourceName, at, version)
     const path = join(deps.dir, name)
     if (deps.exists(path)) continue
     const relPath = relativePath(deps.root, path).replaceAll('\\', '/')
@@ -63,7 +65,7 @@ export async function createCheckpoint(deps: CheckpointDeps): Promise<Checkpoint
       path,
       size,
       sha256: await deps.sha256(path),
-      createdAt: deps.now().toISOString(),
+      createdAt: at.toISOString(),
     }
   }
   throw new DomainError('checkpoint-failed', `检查点版本号冲突过多：${deps.dir}`)

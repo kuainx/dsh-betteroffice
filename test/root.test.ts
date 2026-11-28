@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { planRoot, READONLY_EXCLUDED_TOOLS } from '../src/root.js'
+import { planRoot } from '../src/root.js'
 
 const doc = {
   absPath: 'C:/d/a.docx',
@@ -20,7 +20,6 @@ test('只读用父目录并带 --read-only', () => {
   assert.equal(p.readOnly, true)
   assert.equal(p.rootKind, 'parent')
   assert.deepEqual(p.args, ['--root', 'C:/d', '--read-only'])
-  assert.deepEqual(p.allowedTools, READONLY_EXCLUDED_TOOLS.filter((t) => t !== 'office_files'))
 })
 
 test('编辑且不使用工作文件夹用临时目录', () => {
@@ -29,7 +28,6 @@ test('编辑且不使用工作文件夹用临时目录', () => {
   assert.equal(p.root, 'C:/tmp/bo-1')
   assert.equal(p.readOnly, false)
   assert.deepEqual(p.args, ['--root', 'C:/tmp/bo-1'])
-  assert.equal(p.allowedTools, undefined)
 })
 
 test('编辑且强制使用工作文件夹必须有工作文件夹', () => {

@@ -1,5 +1,5 @@
 import { DomainError } from './errors.js'
-import { MIN_NODE_VERSION, cliPathFor, compareVersions, satisfiesNode } from './runtime.js'
+import { MIN_NODE_VERSION, changeKind, cliPathFor, compareVersions, nodeGate, rollbackGate, satisfiesNode } from './runtime.js'
 import type { Installer } from './installer.js'
 
 /** 斜杠命令 handler 的返回契约（dsh-commands 的 CommandResult）。 */
@@ -71,16 +71,21 @@ export function createBetterOfficeCommand(deps: CommandDeps): BetterOfficeComman
   }
 
   async function install(version: string | undefined, mode: '安装' | '更新'): Promise<CommandResult> {
-    if (!satisfiesNode(deps.nodeVersion)) {
-      return fail(`当前 Node 版本是 v${deps.nodeVersion}，装 @betteroffice/agents 需要 ≥${MIN_NODE_VERSION}。请先升级 Node。`)
-    }
+    const tooOld = nodeGate(deps.nodeVersion)
+    if (tooOld !== undefined) return fail(tooOld)
     const target = version ?? (await deps.latestVersion())
+    const before = deps.currentConfig().runtimeVersion
     const result = await deps.installer.install(target)
     await deps.setRuntimeVersion(result.version)
+    const change = changeKind(before, result.version)
+    if (change === 'same') {
+      return ok(`没有变化：@betteroffice/agents@${result.version} 已经是当前版本。\n- 目录：${result.dir}`)
+    }
     const others = installedList().filter(item => item !== result.version)
     const keep = others.length === 0 ? '' : `\n旧版本仍保留：${others.join('、')}（可用 /betteroffice 回退 切回）`
+    const note = change === 'downgrade' ? '（这是降级，不是更新）' : ''
     return ok(
-      `${mode}完成：@betteroffice/agents@${result.version}\n- 目录：${result.dir}\n- 之后新打开的文档都用这个版本${keep}`,
+      `${mode}完成${note}：@betteroffice/agents@${result.version}\n- 目录：${result.dir}\n- 之后新打开的文档都用这个版本${keep}`,
     )
   }
 
@@ -96,11 +101,8 @@ export function createBetterOfficeCommand(deps: CommandDeps): BetterOfficeComman
 
   async function rollback(version: string | undefined): Promise<CommandResult> {
     if (version === undefined) return fail(`回退需要指定版本。${USAGE}`)
-    const installed = installedList()
-    if (!installed.includes(version)) {
-      const available = installed.length === 0 ? '当前没有任何已安装版本' : `已安装：${installed.join('、')}`
-      return fail(`回退失败：${version} 没有装过（${available}）。`)
-    }
+    const problem = rollbackGate(installedList(), version)
+    if (problem !== undefined) return fail(problem)
     await deps.setRuntimeVersion(version)
     return ok(`已切回 ${version}。之后新打开的文档用它；已打开的任务继续用自己记录的版本。`)
   }

@@ -23,11 +23,22 @@ test('读写类 MCP 工具放行', () => {
   for (const name of [
     'mcp__bo_a71c2e90__office_read',
     'mcp__bo_a71c2e90__office_propose',
-    'mcp__bo_a71c2e90__office_export_pdf',
+    'mcp__bo_a71c2e90__office_render',
     'betteroffice_deliver',
   ]) {
     assert.equal(decideMcpCall(name), undefined, name)
   }
+})
+
+test('同类导出工具按命名一起挡，免得新版本多出来的写法绕过去', () => {
+  const decision = decideMcpCall('mcp__bo_a71c2e90__office_export_pdf')
+  assert.equal(decision?.kind, 'deny')
+  assert.match(decision?.reason ?? '', /betteroffice_deliver/u)
+})
+
+test('别的家族工具照常放行：这个 MCP 还有 xlsx_* 之类的工具', () => {
+  assert.equal(decideMcpCall('mcp__bo_a71c2e90__xlsx_outline'), undefined)
+  assert.equal(decideMcpCall('mcp__bo_a71c2e90__xlsx_write_range'), undefined)
 })
 
 test('不是本插件挂载的 MCP 服务不管', () => {

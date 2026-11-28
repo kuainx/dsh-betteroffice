@@ -6,7 +6,6 @@ import {
   agentPackageDirFor,
   listInstalledRuntimes,
   npmInstallArgs,
-  readInstalledVersion,
   runtimeDirFor,
 } from '../src/npm-runtime.js'
 
@@ -65,8 +64,3 @@ test('安装参数装进私有目录、用私有 cache、不改全局', () => {
   ])
 })
 
-test('从 package.json 文本读出真实版本号', () => {
-  assert.equal(readInstalledVersion('{"name":"@betteroffice/agents","version":"0.4.0"}'), '0.4.0')
-  assert.equal(readInstalledVersion('not json'), undefined)
-  assert.equal(readInstalledVersion('{"name":"x"}'), undefined)
-})

@@ -15,7 +15,7 @@ import { resolveRegistry } from './registry-source.js'
 import { createControlApi, registerControlRoutes, type RouteWeb } from './routes.js'
 import { resolveDocumentPath } from './paths.js'
 import { resolveMcpRuntime } from './runtime.js'
-import { readStored, writeStored } from './store.js'
+import { readStored, writeStored, type StoredSettings } from './store.js'
 import { recycleFile } from './recycle.js'
 import { recoverCommits } from './recovery.js'
 import { createTaskRegistry, type TaskRegistry } from './tasks.js'
@@ -107,16 +107,22 @@ export function apply(ctx: Context, config?: ConfigData): void {
     inFlight: () => runtimeInstaller.inFlight(),
   }
   let runtimeSettings: ReturnType<typeof settingsEntryScope>
-  const saveRuntimeVersion = async (version: string): Promise<void> => {
-    configOverride = { ...currentConfig(), runtimeVersion: version }
-    writeStored(dshHome(), { runtimeVersion: version }, storeIo())
+
+  // 两份保存逻辑只差写哪些字段：先落盘，再改内存配置，最后顺带同步宿主设置项。
+  const persist = async (patch: Partial<StoredSettings>, override: Partial<ConfigData>): Promise<void> => {
+    writeStored(dshHome(), patch, storeIo())
+    configOverride = { ...currentConfig(), ...override }
     if (runtimeSettings === undefined) return
     try {
-      await runtimeSettings.update({ runtimeVersion: version })
+      await runtimeSettings.update(patch)
     } catch (error) {
       // 宿主设置项写不进去不影响使用：文件已经落了，下次启动照样认这个版本。
       log('宿主设置项没写进去，已改用插件自己的记录', error)
     }
+  }
+
+  const saveRuntimeVersion = async (version: string): Promise<void> => {
+    await persist({ runtimeVersion: version }, { runtimeVersion: version })
   }
 
   // 卡片上的两个开关：落盘之后立刻改内存里的配置，页面刷新前就生效。
@@ -125,18 +131,10 @@ export function apply(ctx: Context, config?: ConfigData): void {
     cleanupMode: string
     registry: string
   }): Promise<void> => {
-    writeStored(dshHome(), patch, storeIo())
-    configOverride = {
-      ...currentConfig(),
+    await persist(patch, {
       workspaceMode: patch.workspaceMode as ConfigData['workspaceMode'],
       cleanupMode: patch.cleanupMode as ConfigData['cleanupMode'],
-    }
-    if (runtimeSettings === undefined) return
-    try {
-      await runtimeSettings.update(patch)
-    } catch (error) {
-      log('宿主设置项没写进去，已改用插件自己的记录', error)
-    }
+    })
   }
 
   // 自己拉起 MCP 子进程：宿主沙箱不暴露 ctx.plugin，没法再借宿主的 mcp-client 挂载。

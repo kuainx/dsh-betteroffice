@@ -4,16 +4,12 @@ import { DomainError } from './errors.js'
 import type { ConfigData } from './config.js'
 import type { ResolvedDoc } from './paths.js'
 
-/** 只读模式必须排除的工具：它们能枚举整棵 root。 */
-export const READONLY_EXCLUDED_TOOLS: string[] = ['office_files']
-
 export type RootKind = 'parent' | 'temp' | 'workspace'
 
 export type RootPlan = {
   root: string
   readOnly: boolean
   args: string[]
-  allowedTools?: string[]
   rootKind: RootKind
 }
 
@@ -26,22 +22,19 @@ export type PlanRootInput = {
   workspaceRequested?: boolean
 }
 
+/** 编辑时要不要工作文件夹：tasks 与 planRoot 共用这一处判定，别再各写一遍。 */
+export function needsWorkspace(config: ConfigData, workspaceRequested: boolean | undefined): boolean {
+  return config.workspaceMode === 'always' || (config.workspaceMode === 'auto' && workspaceRequested === true)
+}
+
 export function planRoot(input: PlanRootInput): RootPlan {
   const { doc, mode, config, tempDir, workspaceDir, workspaceRequested } = input
 
   if (mode === 'read') {
-    return {
-      root: doc.dir,
-      readOnly: true,
-      args: ['--root', doc.dir, '--read-only'],
-      allowedTools: READONLY_EXCLUDED_TOOLS.filter((t) => t !== 'office_files'),
-      rootKind: 'parent',
-    }
+    return { root: doc.dir, readOnly: true, args: ['--root', doc.dir, '--read-only'], rootKind: 'parent' }
   }
 
-  const wantsWorkspace =
-    config.workspaceMode === 'always' || (config.workspaceMode === 'auto' && workspaceRequested === true)
-  if (wantsWorkspace) {
+  if (needsWorkspace(config, workspaceRequested)) {
     if (workspaceDir === null) {
       throw new DomainError('workspace-missing', '需要工作文件夹但没有创建：请先准备同名工作文件夹再编辑')
     }

@@ -41,6 +41,27 @@ export function cliPathFor(home: string, version: string): string {
   return join(home, 'betteroffice', 'runtime', version, 'node_modules', '@betteroffice', 'agents', 'dist', 'cli.js')
 }
 
+/** 装/切运行时前统一的 Node 门禁：够了返回 undefined，否则返回给用户看的原因。 */
+export function nodeGate(nodeVersion: string): string | undefined {
+  if (satisfiesNode(nodeVersion)) return undefined
+  return `当前 Node 是 ${nodeVersion}，BetterOffice 需要 ≥${MIN_NODE_VERSION}。请升级 Node.js，或在设置里填写 node 路径。`
+}
+
+/** 回退前确认目标版本真的装过：不合法时返回原因。 */
+export function rollbackGate(installed: readonly string[], version: string): string | undefined {
+  if (installed.includes(version)) return undefined
+  const have = installed.length === 0 ? '还没装任何版本' : installed.join(' / ')
+  return `回退只能选已安装的版本：${version} 没装过；已安装 ${have}。`
+}
+
+/** 切换前后是什么变化，给文案用。 */
+export function changeKind(before: string, after: string): 'same' | 'upgrade' | 'downgrade' | 'fresh' {
+  if (before === '') return 'fresh'
+  const diff = compareVersions(after, before)
+  if (diff === 0) return 'same'
+  return diff > 0 ? 'upgrade' : 'downgrade'
+}
+
 function nodeExeName(): string {
   return process.platform === 'win32' ? 'node.exe' : 'node'
 }

@@ -63,13 +63,3 @@ export function npmInstallArgs(opts: {
   }
   return args
 }
-
-/** 从已安装包的 package.json 文本里取版本号。 */
-export function readInstalledVersion(manifest: string): string | undefined {
-  try {
-    const parsed = JSON.parse(manifest) as { version?: unknown }
-    return typeof parsed.version === 'string' && parsed.version !== '' ? parsed.version : undefined
-  } catch {
-    return undefined
-  }
-}

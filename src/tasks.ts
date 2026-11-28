@@ -13,7 +13,7 @@ import { readToolJson } from './invoke.js'
 import type { McpConnection, McpSpawnSpec } from './mcp.js'
 import { sha256File, type ResolvedDoc } from './paths.js'
 import { replaceOriginal } from './replace.js'
-import { planRoot, type RootKind, type RootPlan } from './root.js'
+import { needsWorkspace, planRoot, type RootKind, type RootPlan } from './root.js'
 import { appendCheckpoint, appendDelivery, createWorkspace, readLedger, type TaskLedger } from './workspace.js'
 
 /** 交付中转目录：先导出到 root 内的这里，再用独占复制搬到用户指定的目录。 */
@@ -204,9 +204,7 @@ export function createTaskRegistry(deps: TaskRegistryDeps): TaskRegistry {
       const taskId = deps.newTaskId()
       const serverName = `bo_${taskId}`
       const at = deps.now()
-      const wantsWorkspace =
-        mode === 'edit' &&
-        (config.workspaceMode === 'always' || (config.workspaceMode === 'auto' && input.workspace === true))
+      const wantsWorkspace = mode === 'edit' && needsWorkspace(config, input.workspace)
 
       let tempDir: string | null = null
       let workspaceDir: string | null = null

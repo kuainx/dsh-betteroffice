@@ -186,7 +186,8 @@ test('回退到没装过的版本返回 400 且列出可选项', async () => {
   const api = createControlApi(fakeDeps({ installedVersions: () => ['0.3.0'] }))
   const r = await api.action({ action: 'rollback', version: '0.1.0' })
   assert.equal(r.status, 400)
-  assert.match(JSON.stringify(r.body), /回退只能选已安装的版本：0\.3\.0/)
+  assert.match(JSON.stringify(r.body), /0\.1\.0 没装过/u)
+  assert.match(JSON.stringify(r.body), /已安装 0\.3\.0/u)
 })
 
 test('Node 版本不足时动作返回 400，不去跑 npm', async () => {
