@@ -2,11 +2,13 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **已过时部分（2026-11-28 补记）**：本计划里所有「用 `dsh-mcp-client` 按 scope 挂载」的内容（`mount.ts`、动态 `import()` 规则、`@deepseek-ai/dsh-mcp-client` 依赖）已在 `c3e9629` 被取代——宿主沙箱不暴露 `ctx.plugin`，挂不上去，改为 `src/mcp.ts` 自己 spawn `betteroffice-mcp` 走 JSON-RPC，详见 [mcp-connector 计划](./2026-11-28-betteroffice-mcp-connector.md) 与 DESIGN §2。下文只作历史记录，不要照抄依赖声明。
+
 **Goal:** 交付一个可加载的 DSH 宿主插件：能把指定文档只读打开、按 agent scope 挂载 `betteroffice-mcp`、向该 agent 暴露 5 个 `betteroffice_*` 工具，并在缺少运行时时给出可行动的错误。
 
-**Architecture:** 插件入口只做装配（`apply` 里读配置、订阅 `agent/created`、注册工具、管任务生命周期）；具体职责拆到 `paths`（路径解析与身份校验）、`workspace`（工作文件夹命名/独占创建/台账）、`mount`（封装 `dsh-mcp-client` 的按 scope 挂载）、`runtime`（Node 与 CLI 定位）、`tasks`（会话↔文档↔挂载的任务注册表）、`tools`（5 个工具定义）。MCP 工具由 `dsh-mcp-client` 自动以 `mcp__bo_<id8>__*` 注册到该 agent 的 scope。
+**Architecture:** 插件入口只做装配（`apply` 里读配置、订阅 `agent/created`、注册工具、管任务生命周期）；具体职责拆到 `paths`（路径解析与身份校验）、`workspace`（工作文件夹命名/独占创建/台账）、`mcp`（自带 JSON-RPC 连接器，直接 spawn 运行时）、`runtime`（Node 与 CLI 定位）、`tasks`（会话↔文档↔连接的任务注册表）、`tools`（5 个工具定义）。MCP 工具由插件自己以 `mcp__bo_<id8>__*` 注册到该 agent 的 scope。
 
-**Tech Stack:** TypeScript 5.9（`tsc` 编译到 `lib/`）、Node 24 ESM、`node:test`、`@deepseek-ai/cordis` 类型、`@deepseek-ai/schemastery`（配置 schema）、`@deepseek-ai/dsh-mcp-client`（运行时动态 import 宿主那份）、`@hyzyn/dsh-kit`（设置/HTTP 等封装）。
+**Tech Stack:** TypeScript 5.9（`tsc` 编译到 `lib/`）、Node 24 ESM、`node:test`、`@deepseek-ai/cordis` 类型、`@deepseek-ai/schemastery`（配置 schema）、`@hyzyn/dsh-kit`（设置/HTTP 等封装）。MCP 协议走 `src/mcp.ts` 自带实现，不依赖 `dsh-mcp-client`。
 
 **Spec:** [docs/superpowers/specs/2026-11-28-betteroffice-plugin-design.md](../specs/2026-11-28-betteroffice-plugin-design.md)
 
@@ -26,7 +28,7 @@
 - `cordis.patch.yml` 行名必须等于包名：`- insert: [{ id: betteroffice, name: 'dsh-betteroffice' }]`。
 - `package.json`：`"type": "module"`、`"main": "lib/src/index.js"`、`"types": "lib/src/index.d.ts"`、`"dsh": { "manifestVersion": 1, "bundle": { "patch": "./cordis.patch.yml" } }`。
 - tsconfig：`module`/`moduleResolution` 均为 `nodenext`，`target: "es2023"`，`strict: true`，`rootDir: "."`，`outDir: "lib"`，`declaration: true`，`skipLibCheck: true`。
-- 插件代码不得 import `@deepseek-ai/dsh-mcp-client` 的静态绑定，只能用变量 specifier 的 `import()`，且失败必须降级为明确错误。
+- ~~插件代码不得 import `@deepseek-ai/dsh-mcp-client` 的静态绑定~~：该依赖已弃用，插件自带连接器。
 - 文档、错误信息面向用户的部分用中文；代码标识符用英文。
 - 本机命令注意：`node --test` 需加 `--experimental-test-isolation=none`；`npm install` 需加 `--cache <repo>/.scratch/npmcache`（默认 cache 被沙箱拦）。
 
@@ -84,7 +86,6 @@
 "peerDependencies": {
   "@deepseek-ai/cordis": "^4.1.0",
   "@deepseek-ai/schemastery": "^3.19.0 || 3.20.0-alpha.1",
-  "@deepseek-ai/dsh-mcp-client": "^0.0.1-rc.1",
   "@hyzyn/dsh-kit": "^0.8.1"
 },
 "devDependencies": {
@@ -92,7 +93,6 @@
   "@types/node": "^22",
   "@deepseek-ai/cordis": "^4.1.0",
   "@deepseek-ai/schemastery": "3.20.0-alpha.1",
-  "@deepseek-ai/dsh-mcp-client": "^0.0.1-rc.1",
   "@hyzyn/dsh-kit": "^0.8.1"
 }
 ```

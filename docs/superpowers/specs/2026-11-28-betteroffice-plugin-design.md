@@ -41,14 +41,14 @@ Host 插件 dsh-betteroffice
   ├─ replace    原文件替换事务（阶段 4）
   └─ http       配置页调用的 Host 路由
   ▼
-@deepseek-ai/dsh-mcp-client（宿主自带那份，动态 import）
+src/mcp.ts 自带 JSON-RPC 连接器（自己 spawn 子进程，不经 dsh-mcp-client）
   ▼
 betteroffice-mcp --root <dir> [--read-only]（stdio）
 ```
 
-**为什么是「薄封装 + 挂载 MCP」**：办公文档的读写/提案/复检逻辑全在 BetterOffice 里，重写没意义；插件只负责设计文档里真正必须由插件管的部分——root 选择、权限校验、任务与检查点、交付、替换事务、运行时版本。挂载用 `dsh-mcp-client`，MCP 工具自动以 `mcp__<serverName>__<tool>` 注册到**该 agent 的 scope**，天然满足「一个实例只服务一个会话+文档+任务」。
+**为什么是「薄封装 + 挂载 MCP」**：办公文档的读写/提案/复检逻辑全在 BetterOffice 里，重写没意义；插件只负责设计文档里真正必须由插件管的部分——root 选择、权限校验、任务与检查点、交付、替换事务、运行时版本。挂载由插件自带的连接器完成（`src/mcp.ts`），MCP 工具以 `mcp__bo_<任务id8>__<工具名>` 注册进**该 agent 的 scope**，天然满足「一个实例只服务一个会话+文档+任务」。
 
-**必须用宿主那一份 `dsh-mcp-client`**：`dsh-scope` 的 `kScope` 是模块内 Symbol，装两份会让 `scopeOf()` 全部返回 `undefined`，per-agent 隔离静默失效。因此以可选 peerDependency 声明 + 运行时 `import('@deepseek-ai/dsh-mcp-client')`（变量 specifier，避免打包器内联），导入失败则降级为「运行时不可用」的明确报错。
+**不再依赖宿主的 `dsh-mcp-client`**（`c3e9629` 起）：早期方案是动态 `import('@deepseek-ai/dsh-mcp-client')` 按 scope 挂载，但宿主沙箱不暴露 `ctx.plugin`，挂不上去，于是改为插件自己 spawn `betteroffice-mcp` 走 JSON-RPC（见 `2026-11-28-betteroffice-mcp-connector.md`）。因此 `package.json` 里不声明这个依赖，也不再需要担心「两份 `dsh-scope`、`kScope` 是模块内 Symbol 导致 `scopeOf()` 返回 undefined」——那个约束只在复用宿主客户端时成立。若将来回退到 scope 挂载，要把 peerDependency 加回来，并且 dev/peer 写成同一个版本范围。
 
 ---
 
@@ -148,7 +148,6 @@ tsconfig 关键项：`module: "nodenext"`、`moduleResolution: "nodenext"`、`ta
 "peerDependencies": {
   "@deepseek-ai/cordis": "^4.1.0",
   "@deepseek-ai/schemastery": "^3.19.0 || 3.20.0-alpha.1",
-  "@deepseek-ai/dsh-mcp-client": "^0.0.1-rc.1",
   "@hyzyn/dsh-kit": "^0.8.1"
 },
 "devDependencies": {
@@ -159,7 +158,7 @@ tsconfig 关键项：`module: "nodenext"`、`moduleResolution: "nodenext"`、`ta
 
 - `@hyzyn/dsh-kit@0.8.1` 的 `lib/services.d.ts` 首行 `import type { Context } from '@deepseek-ai/cordis'`，所以 cordis 必须装（devDep），否则 dsh-kit 的类型解析直接失败。
 - schemastery devDep 取 **3.20.0-alpha.1**（与本机 profile 宿主一致），避免「编译期 3.19 / 运行期 3.20」的 API 漂移；peer 范围因此写成 `^3.19.0 || 3.20.0-alpha.1`（`^3.19.0` 默认不匹配 prerelease）。
-- `@deepseek-ai/dsh-mcp-client` 只取**最小类型面**（`Config`/`apply`），运行时仍动态 `import()` 宿主那一份；若公开包类型与宿主 alpha 版有差异，以运行时结构校验兜底（检查导出确有 `apply`），类型不足处用局部 `as` 收窄——不做全局 `any`。
+- ~~`@deepseek-ai/dsh-mcp-client` 只取最小类型面~~：已随 `c3e9629` 的自带连接器一起去掉，当前三个 peer 包即全部运行时依赖。
 - 宿主 cordis 真实版本无法从本机确认（在 app.asar 内），peer 先写 `^4.1.0`；若宿主是 4.2 alpha 再放宽。
 
 代码结构（文件数控制到最少）：
@@ -172,7 +171,8 @@ src/index.ts            插件入口 name/inject/Config/apply
 src/config.ts           Config（volatile 字段）
 src/paths.ts            路径解析、规范路径、身份校验、权限检查
 src/workspace.ts        命名、独占创建、台账读写
-src/tasks.ts            任务注册表 + MCP 挂载/卸载
+src/mcp.ts              MCP 连接器（spawn + JSON-RPC，自带超时与退出等待）
+src/tasks.ts            任务注册表 + 连接器挂载/卸载
 src/tools.ts            5 个 agent 工具
 src/deliver.ts          另存交付
 src/replace.ts          替换事务（阶段 4）
@@ -231,16 +231,16 @@ test/*.test.ts          node:test
 1. 客户端半部：DSH 客户端模块 id 与卡片挂载点（阶段 3 spike，已获兜底授权）。
 2. `@hyzyn/dsh-kit` 的 settings/http 封装在当前 DSH 版本（宿主 cordis 版本未知）的实际行为（阶段 1 先用最小面）。
 3. Windows 回收站 API 在 DSH 运行环境内的可用性与权限（阶段 4 开门第一件事）。
-4. `@deepseek-ai/dsh-mcp-client` 公开包类型与宿主 alpha 版的一致性（运行时结构校验兜底）。
 
 ---
 
 ## 10. 决策记录
 
-| 时间   | 决策                                                         | 理由                                                                                  |
-| ------ | ------------------------------------------------------------ | ------------------------------------------------------------------------------------- |
-| m00228 | 四阶段全做、按工序提交；不内置运行时；薄封装 + 挂载 MCP      | 你的选择                                                                              |
-| m00549 | 只读 root 照原文：原文件父目录                               | 你的选择；残余风险已在 §3.1 记录                                                      |
-| m00549 | TypeScript 全链路                                            | 你的选择；四个 peer 包已核实公开可装且带类型                                          |
-| m00549 | 配置页 spike 不通过则退化为自动设置页 + `/betteroffice` 命令 | 你的选择                                                                              |
-| 本轮   | 编辑 root 用工作文件夹根（仍偏离原文）                       | `office_export` 只认 root 内相对路径，否则检查点写不进 `checkpoints/`；未被否决，保留 |
+| 时间   | 决策                                                         | 理由                                                                                                    |
+| ------ | ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------- |
+| m00228 | 四阶段全做、按工序提交；不内置运行时；薄封装 + 挂载 MCP      | 你的选择                                                                                                |
+| m00549 | 只读 root 照原文：原文件父目录                               | 你的选择；残余风险已在 §3.1 记录                                                                        |
+| m00549 | TypeScript 全链路                                            | 你的选择；四个 peer 包已核实公开可装且带类型                                                            |
+| m00549 | 配置页 spike 不通过则退化为自动设置页 + `/betteroffice` 命令 | 你的选择                                                                                                |
+| 本轮   | 编辑 root 用工作文件夹根（仍偏离原文）                       | `office_export` 只认 root 内相对路径，否则检查点写不进 `checkpoints/`；未被否决，保留                   |
+| 本轮   | 不再依赖 `dsh-mcp-client`，MCP 连接器自带                    | 宿主沙箱不暴露 `ctx.plugin`，scope 挂载走不通；顺带消掉 dev/peer 版本矛盾（0.0.1-rc.1 vs >=0.1.7-rc.2） |

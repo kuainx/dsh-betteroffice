@@ -10,10 +10,18 @@
     "pptx",
     "xlsx"
   ],
+  "homepage": "https://github.com/kuainx/dsh-betteroffice#readme",
+  "bugs": {
+    "url": "https://github.com/kuainx/dsh-betteroffice/issues"
+  },
   "license": "MIT",
+  "author": "kuainx",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kuainx/dsh-betteroffice.git"
+  },
   "files": [
     "lib/src",
-    "lib/*.d.ts",
     "client.js",
     "cordis.patch.yml",
     "README.md"
@@ -31,12 +39,12 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "prepack": "npm run build",
     "test": "node --test --experimental-test-isolation=none \"lib/test/**/*.test.js\"",
     "check": "npm run build && npm test"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "^4.1.0",
-    "@deepseek-ai/dsh-mcp-client": "^0.0.1-rc.1",
     "@deepseek-ai/schemastery": "3.20.0-alpha.1",
     "@hyzyn/dsh-kit": "^0.8.1",
     "@types/node": "^22",
@@ -46,9 +54,11 @@
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.1.0",
-    "@deepseek-ai/dsh-mcp-client": ">=0.1.7-rc.2",
     "@deepseek-ai/schemastery": "^3.19.0 || 3.20.0-alpha.1",
     "@hyzyn/dsh-kit": "^0.8.1"
+  },
+  "engines": {
+    "node": ">=22.12.0"
   },
   "dsh": {
     "manifestVersion": 1,

@@ -27,7 +27,7 @@ createToolInvoker(tools: ToolView, scope?: unknown): ToolInvoker
 ```
 
 `ToolView` 只要求 `view(scope): ReadonlyMap<string, { execute(args: unknown, exec: unknown): Promise<unknown> }>`。
-调用时传 `{ signal }` 作为执行上下文——dsh-mcp-client 的工具实现只读 `execution.signal`（已读源码 `tools.ts:196`），
+调用时传 `{ signal }` 作为执行上下文——**注意**：`c3e9629` 换成自带连接器后 `src/mcp.ts` 并不读 `signal`，工具调用只受 120 秒超时约束（取消不会中断进行中的调用）。
 `shortcut:` 注释写明这个依赖面；取不到工具定义时抛 `DomainError('tool-not-found', …)`（中文，提示 MCP 可能已断开）。
 
 ## Task 列表（每个 Task 都是「写失败测试 → 看失败 → 实现 → 看通过 → 提交」）
