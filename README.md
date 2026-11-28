@@ -25,8 +25,9 @@
 | `betteroffice_deliver` | 把草稿另存为新文件（默认源文件同目录，只允许落在源文件目录或其子目录，同名自动加序号） |
 | `betteroffice_replace` | 用户明确要求时就地替换原文件：原件进回收站、新版本落位并校验，失败自动还原 |
 | `betteroffice_close` | 关闭任务并释放该文档的 MCP 实例；用户放弃草稿时带 `discard: true` |
+| `betteroffice_call` | 把某一个 BetterOffice 工具（裸名，如 `docx_edit`、`xlsx_write_range`）转给该任务，用来改内容 |
 
-打开文档后，该文档的 BetterOffice 工具以 `mcp__bo_<任务ID>__<工具名>` 出现，每个任务一个独立 MCP 实例。
+打开文档后，插件为该任务拉起一个独立的 BetterOffice MCP 子进程，所有改内容的工具都经 `betteroffice_call` 转过去。完整工具清单以子进程的 `tools/list` 为准（`docx_edit`、`pptx_edit`、`xlsx_write_range`、`office_propose` 等）。
 
 ## 怎么用
 
@@ -78,7 +79,7 @@
 
 ## 已知限制
 
-- BetterOffice MCP 会同时暴露 `office_export`（写文件）和 `office_files`（列目录）。插件在调用前把它们拦掉：前者只能通过 `betteroffice_deliver` / `betteroffice_replace` 使用，后者直接拒绝。工具名仍会出现在 `mcp__bo_<任务ID>__*` 里，但调用会被拒绝并给出改用哪条工具。
+- BetterOffice MCP 会同时暴露 `office_export`（写文件）和 `office_files`（列目录）。`betteroffice_call` 在转发前把它们拦掉：前者只能通过 `betteroffice_deliver` / `betteroffice_replace` 使用，后者直接拒绝，拒绝理由会原样返回给 Agent。
 - 替换原文件依赖系统回收站：非 Windows 平台、网络盘等场景只能另存，不会降级成永久删除。
 - 「自动」与「开启」两种清理档位目前的判定完全相同，差别留给后续版本（例如由 Agent 明确表态保留时跳过）。
 - 自绘卡片只在 DSH ≥0.2.0-rc.1 的插件详情页里内联显示；更旧的宿主只保留设置项和 `/betteroffice` 命令，功能不缺。
