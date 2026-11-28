@@ -14,7 +14,7 @@ import { fetchLatestVersion } from './registry.js'
 import { createControlApi, registerControlRoutes, type RouteWeb } from './routes.js'
 import { resolveDocumentPath } from './paths.js'
 import { resolveMcpRuntime } from './runtime.js'
-import { readStoredVersion, writeStoredVersion } from './store.js'
+import { readStored, writeStored } from './store.js'
 import { recycleFile } from './recycle.js'
 import { recoverCommits } from './recovery.js'
 import { createTaskRegistry, type TaskRegistry } from './tasks.js'
@@ -65,12 +65,23 @@ export function apply(ctx: Context, config?: ConfigData): void {
   const host = ctx as unknown as HostContext
   const rawConfig = config as unknown
   let configOverride: ConfigData | undefined
-  // 版本号真正落盘在插件自己的目录：宿主设置服务缺 describe/update 时那一路是空的，
-  // 只有文件能保证重启后仍认这个版本（否则装好了也一直说「未安装」）。
-  const storedVersion = (): string =>
-    readStoredVersion(dshHome(), { exists: existsSync, read: (path) => readFileSync(path, 'utf8') })
-  const withStored = (config: ConfigData): ConfigData =>
-    config.runtimeVersion === '' ? { ...config, runtimeVersion: storedVersion() } : config
+  // 版本号与卡片上那两个开关都落盘在插件自己的目录：宿主设置服务缺 describe/update 时
+  // 那一路是空的，而详情页那一格是插件自己画的，没有「按 Config 自动生成表单」。
+  const storeIo = () => ({
+    exists: existsSync,
+    read: (path: string) => readFileSync(path, 'utf8'),
+    mkdir: (path: string) => mkdirSync(path, { recursive: true }),
+    write: (path: string, text: string) => writeFileSync(path, text, 'utf8'),
+  })
+  const withStored = (config: ConfigData): ConfigData => {
+    const stored = readStored(dshHome(), storeIo())
+    return {
+      ...config,
+      runtimeVersion: config.runtimeVersion === '' ? stored.runtimeVersion : config.runtimeVersion,
+      workspaceMode: (stored.workspaceMode === '' ? config.workspaceMode : stored.workspaceMode) as ConfigData['workspaceMode'],
+      cleanupMode: (stored.cleanupMode === '' ? config.cleanupMode : stored.cleanupMode) as ConfigData['cleanupMode'],
+    }
+  }
   const currentConfig = (): ConfigData => {
     if (configOverride !== undefined) return configOverride
     try {
@@ -87,15 +98,28 @@ export function apply(ctx: Context, config?: ConfigData): void {
   let runtimeSettings: ReturnType<typeof settingsEntryScope>
   const saveRuntimeVersion = async (version: string): Promise<void> => {
     configOverride = { ...currentConfig(), runtimeVersion: version }
-    writeStoredVersion(dshHome(), version, {
-      mkdir: (path) => mkdirSync(path, { recursive: true }),
-      write: (path, text) => writeFileSync(path, text, 'utf8'),
-    })
+    writeStored(dshHome(), { runtimeVersion: version }, storeIo())
     if (runtimeSettings === undefined) return
     try {
       await runtimeSettings.update({ runtimeVersion: version })
     } catch (error) {
       // 宿主设置项写不进去不影响使用：文件已经落了，下次启动照样认这个版本。
+      log('宿主设置项没写进去，已改用插件自己的记录', error)
+    }
+  }
+
+  // 卡片上的两个开关：落盘之后立刻改内存里的配置，页面刷新前就生效。
+  const saveSettings = async (patch: { workspaceMode: string; cleanupMode: string }): Promise<void> => {
+    writeStored(dshHome(), patch, storeIo())
+    configOverride = {
+      ...currentConfig(),
+      workspaceMode: patch.workspaceMode as ConfigData['workspaceMode'],
+      cleanupMode: patch.cleanupMode as ConfigData['cleanupMode'],
+    }
+    if (runtimeSettings === undefined) return
+    try {
+      await runtimeSettings.update(patch)
+    } catch (error) {
       log('宿主设置项没写进去，已改用插件自己的记录', error)
     }
   }
@@ -220,6 +244,7 @@ export function apply(ctx: Context, config?: ConfigData): void {
       nodeVersion: process.versions.node,
       getConfig: currentConfig,
       saveRuntimeVersion,
+      saveSettings,
       install: version => runtimeInstaller.install(version),
       inFlight: () => runtimeInstaller.inFlight(),
       latestVersion: () => fetchLatestVersion(),

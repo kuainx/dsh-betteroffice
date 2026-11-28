@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { readStoredVersion, storePath, writeStoredVersion } from '../src/store.js'
+import { readStored, readStoredVersion, storePath, writeStored, writeStoredVersion } from '../src/store.js'
 
 test('没写过的时候读出来是空串，不是报错', () => {
   const stored = readStoredVersion('C:/home', { exists: () => false, read: () => '' })
@@ -19,6 +19,8 @@ test('写进去的版本能读回来，落在 betteroffice 自己的目录里', 
     'C:/home',
     '0.4.0',
     {
+      exists: () => false,
+      read: () => '',
       mkdir: () => undefined,
       write: (path, text) => {
         writtenPath = path
@@ -40,6 +42,33 @@ test('存下来的不是版本号形状时忽略，避免拿脏数据去拼路�
     read: () => JSON.stringify({ runtimeVersion: '../escape' }),
   })
   assert.equal(stored, '')
+})
+
+test('工作区与清理模式跟版本存在同一个文件里，写一项不抹掉另一项', () => {
+  let written = ''
+  const io = () => ({
+    exists: () => written !== '',
+    read: () => written,
+    mkdir: () => undefined,
+    write: (_path: string, text: string) => {
+      written = text
+    },
+  })
+  writeStored('C:/home', { runtimeVersion: '0.4.0' }, io())
+  writeStored('C:/home', { workspaceMode: 'always' }, io())
+  const stored = readStored('C:/home', io())
+  assert.equal(stored.runtimeVersion, '0.4.0')
+  assert.equal(stored.workspaceMode, 'always')
+  assert.equal(stored.cleanupMode, '')
+})
+
+test('文件里的枚举值不认识时当没设置，别把脏值交给业务逻辑', () => {
+  const stored = readStored('C:/home', {
+    exists: () => true,
+    read: () => JSON.stringify({ workspaceMode: 'sometimes', cleanupMode: 'later' }),
+  })
+  assert.equal(stored.workspaceMode, '')
+  assert.equal(stored.cleanupMode, '')
 })
 
 test('storePath 跟着 home 走', () => {

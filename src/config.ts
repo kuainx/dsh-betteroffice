@@ -28,6 +28,9 @@ export const Config = z.object({
     .volatile(),
 })
 
+export const WORKSPACE_MODES = ['auto', 'never', 'always'] as const
+export const CLEANUP_MODES = ['off', 'auto', 'on'] as const
+
 export type ConfigData = {
   workspaceMode: 'auto' | 'never' | 'always'
   cleanupMode: 'off' | 'auto' | 'on'

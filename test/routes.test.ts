@@ -16,6 +16,7 @@ function fakeDeps(overrides: Partial<ControlDeps> = {}): ControlDeps {
     nodeVersion: '24.22.1',
     getConfig: () => config,
     saveRuntimeVersion: async () => {},
+    saveSettings: async () => {},
     install: async (version: string) => ({
       version,
       dir: `C:/h/runtime/${version}`,
@@ -223,4 +224,31 @@ test('registry 不可用返回 500 与中文原因', async () => {
   const r = await api.action({ action: 'check' })
   assert.equal(r.status, 500)
   assert.match(JSON.stringify(r.body), /网络或代理/)
+})
+
+test('settings 动作把两个开关原样交给保存', async () => {
+  const saved: { workspaceMode: string; cleanupMode: string }[] = []
+  const api = createControlApi(
+    fakeDeps({
+      saveSettings: async (patch) => {
+        saved.push(patch)
+      },
+    }),
+  )
+  const r = await api.action({ action: 'settings', workspaceMode: 'always', cleanupMode: 'on' })
+  assert.equal(r.status, 200)
+  assert.deepEqual(saved, [{ workspaceMode: 'always', cleanupMode: 'on' }])
+})
+
+test('保存设置失败时回 500 并把原因带出来', async () => {
+  const api = createControlApi(
+    fakeDeps({
+      saveSettings: async () => {
+        throw new DomainError('settings-failed', '写不进去：磁盘只读')
+      },
+    }),
+  )
+  const r = await api.action({ action: 'settings', workspaceMode: 'always', cleanupMode: 'off' })
+  assert.equal(r.status, 500)
+  assert.match(JSON.stringify(r.body), /磁盘只读/)
 })

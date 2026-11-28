@@ -28,6 +28,8 @@ const CARD_CSS = `
 .bo_result { color: var(--dsw-alias-label-secondary); line-height: 1.6; }
 .bo_result[data-kind="ok"] { color: var(--dsw-alias-state-success-primary); }
 .bo_result[data-kind="error"] { color: var(--dsw-alias-state-error-primary); }
+.bo_settings { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; padding-top: 10px; border-top: 1px solid var(--dsw-alias-border-l1); }
+.bo_settings .bo_label { min-width: auto; }
 .bo_btn { padding: 5px 12px; border: 1px solid var(--dsw-alias-border-l2); border-radius: 8px; background: var(--dsw-alias-bg-layer-2); color: var(--dsw-alias-label-primary); font-size: 13px; cursor: pointer; }
 .bo_btn[data-variant="primary"] { border-color: transparent; background: var(--dsw-alias-button-primary-fill); color: var(--dsw-alias-bg-base); }
 .bo_btn:hover:not(:disabled) { background: var(--dsw-alias-interactive-bg-hover); }
@@ -114,6 +116,8 @@ window.__ModuleLoader__.load({
             typeof body.node !== 'object' ||
             body.runtime === null ||
             typeof body.runtime !== 'object' ||
+            body.settings === null ||
+            typeof body.settings !== 'object' ||
             !Array.isArray(body.runtime.installed) ||
             !Array.isArray(body.messages) ||
             !Array.isArray(body.inFlight)
@@ -141,7 +145,7 @@ window.__ModuleLoader__.load({
         return () => clearTimeout(timer)
       }, [installing, snap, load])
 
-      async function run(action) {
+      async function run(action, extra) {
         setBusy(action)
         setResult(null)
         try {
@@ -149,7 +153,11 @@ window.__ModuleLoader__.load({
             method: 'POST',
             headers: { 'content-type': 'application/json' },
             // 回退发的是下拉框实际选中的那个版本：target 初始是空串，直接发它是必然 400。
-            body: JSON.stringify(action === 'rollback' ? { action, version: picked } : { action }),
+            body: JSON.stringify({
+              action,
+              ...(action === 'rollback' ? { version: picked } : {}),
+              ...(extra || {}),
+            }),
           })
           const body = await response.json().catch(() => ({}))
           if (body.ok === true) {
@@ -198,6 +206,42 @@ window.__ModuleLoader__.load({
           ? h('div', { className: 'bo_note' }, '正在读取状态…')
           : h('div', { className: 'bo_rows' }, ...rows),
         ...(snap === null ? [] : snap.messages.map((text, index) => h('div', { key: `message-${index}`, className: 'bo_note' }, text))),
+        ...(snap === null
+          ? []
+          : [
+              h(
+                'div',
+                { className: 'bo_settings', key: 'settings' },
+                h('span', { className: 'bo_label' }, '工作文件夹'),
+                h(
+                  'select',
+                  {
+                    className: 'bo_select',
+                    value: snap.settings.workspaceMode,
+                    disabled: busy !== '',
+                    onChange: (event) =>
+                      void run('settings', { workspaceMode: event.target.value, cleanupMode: snap.settings.cleanupMode }),
+                  },
+                  h('option', { value: 'auto' }, '由 agent 决定'),
+                  h('option', { value: 'never' }, '不使用'),
+                  h('option', { value: 'always' }, '强制使用'),
+                ),
+                h('span', { className: 'bo_label' }, '清理模式'),
+                h(
+                  'select',
+                  {
+                    className: 'bo_select',
+                    value: snap.settings.cleanupMode,
+                    disabled: busy !== '',
+                    onChange: (event) =>
+                      void run('settings', { workspaceMode: snap.settings.workspaceMode, cleanupMode: event.target.value }),
+                  },
+                  h('option', { value: 'off' }, '不删除'),
+                  h('option', { value: 'auto' }, '自动删除'),
+                  h('option', { value: 'on' }, '总是删除'),
+                ),
+              ),
+            ]),
         h(
           'div',
           { className: 'bo_actions' },

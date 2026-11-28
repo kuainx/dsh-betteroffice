@@ -1,6 +1,6 @@
 /** 配置卡片的状态快照：纯函数，文件存在性与 Node 版本都由调用方注入，便于测试。 */
 
-import type { ConfigData } from './config.js'
+import { CLEANUP_MODES, WORKSPACE_MODES, type ConfigData } from './config.js'
 import { DomainError } from './errors.js'
 import { isVersion } from './npm-runtime.js'
 import { MIN_NODE_VERSION, cliPathFor, satisfiesNode } from './runtime.js'
@@ -8,6 +8,7 @@ import { MIN_NODE_VERSION, cliPathFor, satisfiesNode } from './runtime.js'
 export interface StatusSnapshot {
   node: { version: string; ok: boolean; required: string }
   runtime: { configured: string; installed: readonly string[]; cliReady: boolean }
+  settings: { workspaceMode: string; cleanupMode: string }
   latest: string | null
   inFlight: readonly string[]
   messages: readonly string[]
@@ -23,25 +24,52 @@ export interface StatusInput {
   inFlight?: readonly string[]
 }
 
-export type ControlAction = 'install' | 'check' | 'update' | 'rollback'
+export type ControlAction = 'install' | 'check' | 'update' | 'rollback' | 'settings'
 
 export interface ActionRequest {
   action: ControlAction
   version?: string
+  settings?: { workspaceMode: string; cleanupMode: string }
 }
 
-const ACTIONS: readonly ControlAction[] = ['install', 'check', 'update', 'rollback']
+const ACTIONS: readonly ControlAction[] = ['install', 'check', 'update', 'rollback', 'settings']
+
+/** 卡片发来的两个开关：值只看白名单，别的写法一律拒绝，不静默取默认。 */
+function parseSettings(body: { workspaceMode?: unknown; cleanupMode?: unknown }): {
+  workspaceMode: string
+  cleanupMode: string
+} {
+  const workspaceMode = body.workspaceMode
+  const cleanupMode = body.cleanupMode
+  if (typeof workspaceMode !== 'string' || !(WORKSPACE_MODES as readonly string[]).includes(workspaceMode)) {
+    throw new DomainError(
+      'invalid-settings',
+      `工作文件夹取值不对：${workspaceMode === undefined ? '空' : String(workspaceMode)}；可用：auto / never / always。`,
+    )
+  }
+  if (typeof cleanupMode !== 'string' || !(CLEANUP_MODES as readonly string[]).includes(cleanupMode)) {
+    throw new DomainError(
+      'invalid-settings',
+      `清理模式取值不对：${cleanupMode === undefined ? '空' : String(cleanupMode)}；可用：off / auto / on。`,
+    )
+  }
+  return { workspaceMode, cleanupMode }
+}
 
 /** 校验卡片发来的动作：不认识的动作、路径穿越的版本号都在这里挡掉，别进业务逻辑。 */
 export function parseAction(raw: unknown): ActionRequest {
-  const body = typeof raw === 'object' && raw !== null ? (raw as { action?: unknown; version?: unknown }) : {}
+  const body =
+    typeof raw === 'object' && raw !== null
+      ? (raw as { action?: unknown; version?: unknown; workspaceMode?: unknown; cleanupMode?: unknown })
+      : {}
   const action = body.action
   if (typeof action !== 'string' || !(ACTIONS as readonly string[]).includes(action)) {
     throw new DomainError(
       'invalid-action',
-      `不认识的操作：${action === undefined ? '空' : String(action)}；可用：install / check / update / rollback。`,
+      `不认识的操作：${action === undefined ? '空' : String(action)}；可用：install / check / update / rollback / settings。`,
     )
   }
+  if (action === 'settings') return { action, settings: parseSettings(body) }
   // 给了 version 但不是字符串（123 / null / 对象）不能当成「没给」——那会静默装成最新版。
   if ('version' in body && typeof body.version !== 'string') {
     throw new DomainError('invalid-version', `版本号看起来不对：${String(body.version)}；只能是 1.2.3 这样的形式。`)
@@ -79,6 +107,7 @@ export function buildStatus(input: StatusInput): StatusSnapshot {
   return {
     node: { version: nodeVersion, ok: nodeOk, required: MIN_NODE_VERSION },
     runtime: { configured, installed: [...installed], cliReady },
+    settings: { workspaceMode: config.workspaceMode, cleanupMode: config.cleanupMode },
     latest: input.latest ?? null,
     inFlight: [...(input.inFlight ?? [])],
     messages,

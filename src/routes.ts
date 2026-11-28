@@ -11,6 +11,8 @@ export interface ControlDeps {
   nodeVersion: string
   getConfig: () => ConfigData
   saveRuntimeVersion: (version: string) => Promise<void>
+  /** 卡片上那两个开关：工作文件夹与清理模式。 */
+  saveSettings: (patch: { workspaceMode: string; cleanupMode: string }) => Promise<void>
   install: (version: string) => Promise<{ version: string; dir: string; cliPath: string }>
   latestVersion: () => Promise<string>
   installedVersions: () => readonly string[]
@@ -22,7 +24,16 @@ export interface ControlDeps {
 export type ApiResult = { status: 200 | 400 | 409 | 500; body: unknown }
 
 /** 这几类错误是用户输入或时机的错，回 400；安装中的撞车回 409；其余一律 500。 */
-const BAD_REQUEST_CODES = new Set(['invalid-action', 'invalid-version', 'rollback-unknown', 'node-too-old'])
+const BAD_REQUEST_CODES = new Set([
+  'invalid-action',
+  'invalid-version',
+  'invalid-settings',
+  'rollback-unknown',
+  'node-too-old',
+])
+
+const WORKSPACE_TEXT: Record<string, string> = { auto: '自动', never: '不使用', always: '强制使用' }
+const CLEANUP_TEXT: Record<string, string> = { off: '不删除', auto: '自动删除', on: '总是删除' }
 
 function fail(status: 400 | 409 | 500, error: unknown): ApiResult {
   return { status, body: { ok: false, error: error instanceof Error ? error.message : String(error) } }
@@ -157,6 +168,11 @@ export function createControlApi(deps: ControlDeps): {
   }
 
   async function run(request: ActionRequest): Promise<string> {
+    if (request.action === 'settings') {
+      const patch = request.settings ?? { workspaceMode: '', cleanupMode: '' }
+      await deps.saveSettings(patch)
+      return `已保存：工作文件夹 ${WORKSPACE_TEXT[patch.workspaceMode] ?? patch.workspaceMode}，清理模式 ${CLEANUP_TEXT[patch.cleanupMode] ?? patch.cleanupMode}。`
+    }
     if (request.action === 'check') return check()
     if (request.action === 'rollback') {
       const version = request.version ?? ''

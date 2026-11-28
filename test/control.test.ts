@@ -9,6 +9,22 @@ const base: { home: string; nodeVersion: string; config: ConfigData } = {
   config: { workspaceMode: 'auto', cleanupMode: 'auto', nodePath: '', runtimeVersion: '' },
 }
 
+test('settings 动作原样带出两个开关', () => {
+  assert.deepEqual(parseAction({ action: 'settings', workspaceMode: 'always', cleanupMode: 'off' }), {
+    action: 'settings',
+    settings: { workspaceMode: 'always', cleanupMode: 'off' },
+  })
+})
+
+test('settings 的枚举值不对时给出中文原因，别静默改成默认', () => {
+  assert.throws(() => parseAction({ action: 'settings', workspaceMode: 'sometimes', cleanupMode: 'off' }), /工作文件夹/)
+})
+
+test('快照里带上当前的两个开关，卡片才有东西可显示', () => {
+  const snapshot = buildStatus({ ...base, installed: [], exists: () => false })
+  assert.deepEqual(snapshot.settings, { workspaceMode: 'auto', cleanupMode: 'auto' })
+})
+
 test('未安装时给出可行动提示', () => {
   const s = buildStatus({ ...base, installed: [], exists: () => false })
   assert.equal(s.runtime.installed.length, 0)
