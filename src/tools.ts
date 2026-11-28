@@ -242,15 +242,57 @@ export function createToolDefinitions(deps: ToolDeps): ToolDefinition[] {
     },
   }
 
+  type RawTool = Record<string, unknown>
+
+function toolList(payload: unknown): RawTool[] {
+  if (typeof payload !== 'object' || payload === null) return []
+  const raw = (payload as RawTool)['tools']
+  if (!Array.isArray(raw)) return []
+  return raw.filter((entry): entry is RawTool => typeof entry === 'object' && entry !== null)
+}
+
+function nameOf(entry: RawTool): string {
+  return typeof entry['name'] === 'string' ? entry['name'] : ''
+}
+
+function schemaOf(entry: RawTool): RawTool {
+  const schema = entry['inputSchema']
+  return typeof schema === 'object' && schema !== null ? (schema as RawTool) : {}
+}
+
+function summarizeTool(entry: RawTool): {
+  name: string
+  summary: string
+  required: string[]
+  optional: string[]
+} {
+  const schema = schemaOf(entry)
+  const required = Array.isArray(schema['required'])
+    ? schema['required'].filter((value): value is string => typeof value === 'string')
+    : []
+  const properties = schema['properties']
+  const names = typeof properties === 'object' && properties !== null ? Object.keys(properties) : []
+  const description = typeof entry['description'] === 'string' ? entry['description'] : ''
+  const stop = description.search(/\.\s/)
+  return {
+    name: nameOf(entry),
+    summary: (stop === -1 ? description : description.slice(0, stop + 1)).slice(0, 160),
+    required,
+    optional: names.filter((name) => !required.includes(name)),
+  }
+}
+
   const tools: ToolDefinition = {
     name: 'betteroffice_tools',
     description:
-      '列出该任务 MCP 子进程里的全部工具：名字、说明与 inputSchema（含必填字段）。' +
+      '列出该任务 MCP 子进程里的工具：默认只给名字、一句说明、必填与可选参数名，' +
+      '几十个工具的完整 schema 一次全给会灌满上下文；想看某一个的完整 inputSchema 就再调一次并带上 tool。' +
       '调 betteroffice_call 之前先看它，别照文档猜工具名——真实名字以这里为准。',
     parameters: {
       type: 'object',
       properties: {
         task: { type: 'string', description: 'betteroffice_open 返回的 taskId' },
+        tool: { type: 'string', description: '可选：只想看这一个工具的完整 inputSchema 时填它的裸名' },
       },
       required: ['task'],
       additionalProperties: false,
@@ -258,7 +300,22 @@ export function createToolDefinitions(deps: ToolDeps): ToolDefinition[] {
     output: { schema: OUTPUT_SCHEMA, render: renderJson },
     async execute(args) {
       const taskId = requiredString(args, 'task', '任务 id')
-      return await deps.registry.tools(deps.sessionId, taskId)
+      const wanted = typeof args['tool'] === 'string' ? args['tool'].trim() : ''
+      const listed = toolList(await deps.registry.tools(deps.sessionId, taskId))
+      if (wanted === '') {
+        return {
+          tools: listed.map(summarizeTool),
+          hint: '要看某个工具的完整 inputSchema，再调一次并带上 tool 参数。',
+        }
+      }
+      const found = listed.find((entry) => nameOf(entry) === wanted)
+      if (found === undefined) {
+        throw new DomainError(
+          'invalid-arguments',
+          `没有这个工具：${wanted}；先不带 tool 调一次，看清单里的名字。`,
+        )
+      }
+      return { tool: found }
     },
   }
 

@@ -115,14 +115,52 @@ test('缺少必填参数时给中文错误', async () => {
   await assert.rejects(() => open.execute({}, undefined), /缺少参数 path/)
 })
 
-test('betteroffice_tools 把子进程的工具清单交给模型', async () => {
-  const list = { tools: [{ name: 'docx_edit', inputSchema: { required: ['document'] } }] }
-  const registry = makeRegistry({ tools: async () => list })
+const sampleTools = {
+  tools: [
+    {
+      name: 'docx_edit',
+      description: 'Edit runs. Second sentence is dropped.',
+      inputSchema: {
+        type: 'object',
+        properties: { document: { type: 'string' }, version: { type: 'string' }, edits: {} },
+        required: ['document', 'version'],
+      },
+    },
+    { name: 'office_open', description: 'Open a document.', inputSchema: { properties: { path: {} } } },
+  ],
+}
+
+test('betteroffice_tools 默认只给摘要，免得几十个 schema 一次灌满上下文', async () => {
+  const registry = makeRegistry({ tools: async () => sampleTools })
   const defs = createToolDefinitions({ registry, sessionId: 's1', config: cfg })
   const shown = defs.find((definition) => definition.name === 'betteroffice_tools')!
 
-  assert.deepEqual(await shown.execute({ task: 't1' }, undefined), list)
-  assert.match(JSON.stringify(shown.output.render({}, list)), /docx_edit/)
+  assert.deepEqual(await shown.execute({ task: 't1' }, undefined), {
+    tools: [
+      {
+        name: 'docx_edit',
+        summary: 'Edit runs.',
+        required: ['document', 'version'],
+        optional: ['edits'],
+      },
+      { name: 'office_open', summary: 'Open a document.', required: [], optional: ['path'] },
+    ],
+    hint: '要看某个工具的完整 inputSchema，再调一次并带上 tool 参数。',
+  })
+})
+
+test('betteroffice_tools 带 tool 时给这一个工具的完整 schema', async () => {
+  const registry = makeRegistry({ tools: async () => sampleTools })
+  const defs = createToolDefinitions({ registry, sessionId: 's1', config: cfg })
+  const shown = defs.find((definition) => definition.name === 'betteroffice_tools')!
+
+  assert.deepEqual(await shown.execute({ task: 't1', tool: 'office_open' }, undefined), {
+    tool: sampleTools.tools[1],
+  })
+  await assert.rejects(
+    () => shown.execute({ task: 't1', tool: 'docx_replace_text' }, undefined),
+    /没有这个工具：docx_replace_text/,
+  )
 })
 
 test('透传缺 tool 时说清参数该放哪', async () => {

@@ -26,7 +26,7 @@
 | `betteroffice_replace` | 用户明确要求时就地替换原文件：原件进回收站、新版本落位并校验，失败自动还原 |
 | `betteroffice_close` | 关闭任务并释放该文档的 MCP 实例；用户放弃草稿时带 `discard: true` |
 | `betteroffice_call` | 把某一个 BetterOffice 工具（裸名，如 `docx_edit`、`xlsx_write_range`）转给该任务，用来改内容 |
-| `betteroffice_tools` | 列出该任务子进程的全部工具名与 `inputSchema`；调 `betteroffice_call` 前先看它 |
+| `betteroffice_tools` | 列出该任务子进程的工具名、一句说明、必填与可选参数名；带上 `tool` 再看某一个的完整 `inputSchema`。调 `betteroffice_call` 前先看它 |
 
 打开文档后，插件为该任务拉起一个独立的 BetterOffice MCP 子进程，所有改内容的工具都经 `betteroffice_call` 转过去。完整工具清单以子进程的 `tools/list` 为准（`docx_edit`、`pptx_edit`、`xlsx_write_range`、`office_propose` 等）。
 
