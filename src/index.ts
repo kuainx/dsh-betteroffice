@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto'
-import { existsSync, readdirSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { delimiter } from 'node:path'
@@ -14,6 +14,7 @@ import { fetchLatestVersion } from './registry.js'
 import { createControlApi, registerControlRoutes, type RouteWeb } from './routes.js'
 import { resolveDocumentPath } from './paths.js'
 import { resolveMcpRuntime } from './runtime.js'
+import { readStoredVersion, writeStoredVersion } from './store.js'
 import { recycleFile } from './recycle.js'
 import { recoverCommits } from './recovery.js'
 import { createTaskRegistry, type TaskRegistry } from './tasks.js'
@@ -65,13 +66,19 @@ export function apply(ctx: Context, config?: ConfigData): void {
   const host = ctx as unknown as HostContext
   const rawConfig = config as unknown
   let configOverride: ConfigData | undefined
+  // 版本号真正落盘在插件自己的目录：宿主设置服务缺 describe/update 时那一路是空的，
+  // 只有文件能保证重启后仍认这个版本（否则装好了也一直说「未安装」）。
+  const storedVersion = (): string =>
+    readStoredVersion(dshHome(), { exists: existsSync, read: (path) => readFileSync(path, 'utf8') })
+  const withStored = (config: ConfigData): ConfigData =>
+    config.runtimeVersion === '' ? { ...config, runtimeVersion: storedVersion() } : config
   const currentConfig = (): ConfigData => {
     if (configOverride !== undefined) return configOverride
     try {
-      return resolveConfig(rawConfig)
+      return withStored(resolveConfig(rawConfig))
     } catch (error) {
       log('配置无效，改用默认值', error)
-      return resolveConfig(undefined)
+      return withStored(resolveConfig(undefined))
     }
   }
 
@@ -81,11 +88,17 @@ export function apply(ctx: Context, config?: ConfigData): void {
   let runtimeSettings: ReturnType<typeof settingsEntryScope>
   const saveRuntimeVersion = async (version: string): Promise<void> => {
     configOverride = { ...currentConfig(), runtimeVersion: version }
-    if (runtimeSettings === undefined) {
-      log('宿主没有提供可写的设置项，运行时版本只在本次会话生效')
-      return
+    writeStoredVersion(dshHome(), version, {
+      mkdir: (path) => mkdirSync(path, { recursive: true }),
+      write: (path, text) => writeFileSync(path, text, 'utf8'),
+    })
+    if (runtimeSettings === undefined) return
+    try {
+      await runtimeSettings.update({ runtimeVersion: version })
+    } catch (error) {
+      // 宿主设置项写不进去不影响使用：文件已经落了，下次启动照样认这个版本。
+      log('宿主设置项没写进去，已改用插件自己的记录', error)
     }
-    await runtimeSettings.update({ runtimeVersion: version })
   }
 
   const mounter = createMounter({
