@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { buildStatus } from '../src/control.js'
+import { buildStatus, parseAction } from '../src/control.js'
 import type { ConfigData } from '../src/config.js'
 
 const base: { home: string; nodeVersion: string; config: ConfigData } = {
@@ -31,4 +31,23 @@ test('已装版本缺 CLI 入口时提示重装', () => {
 test('安装中的版本出现在 inFlight', () => {
   const s = buildStatus({ ...base, installed: [], exists: () => false, inFlight: ['0.4.0'] })
   assert.deepEqual(s.inFlight, ['0.4.0'])
+})
+
+test('未知动作被拒', () => {
+  assert.throws(() => parseAction({ action: 'delete' }), /不认识的操?作|invalid-action/i)
+})
+
+test('版本号带路径分隔符被拒', () => {
+  assert.throws(() => parseAction({ action: 'install', version: '../x' }), /版本号/)
+})
+
+test('rollback 必须带版本', () => {
+  assert.throws(() => parseAction({ action: 'rollback' }), /回退需要指定版本/)
+})
+
+test('合法请求原样返回', () => {
+  assert.deepEqual(parseAction({ action: 'install', version: '0.4.0' }), {
+    action: 'install',
+    version: '0.4.0',
+  })
 })
