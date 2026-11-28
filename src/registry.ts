@@ -1,9 +1,31 @@
 import { DomainError } from './errors.js'
 
 const PACKAGE = '@betteroffice/agents'
-const REGISTRY_URL = `https://registry.npmjs.org/${encodeURIComponent(PACKAGE).replace('%40', '@')}`
 
 const SEMVER = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/
+
+/** 内置的两个源；「默认」不在这里，它表示跟随 npm 自己的配置。 */
+export const REGISTRY_PRESETS = {
+  npmjs: 'https://registry.npmjs.org/',
+  npmmirror: 'https://registry.npmmirror.com/',
+} as const
+
+/** 把源拼成包地址，容忍结尾多写的斜杠。 */
+export function packageUrl(registry: string): string {
+  return `${registry.trim().replace(/\/+$/, '')}/${PACKAGE}`
+}
+
+/** 只收 http(s) 的完整地址：其余（file:、ftp:、协议相对地址、裸域名）一律不认。 */
+export function isRegistryUrl(value: string): boolean {
+  const text = value.trim()
+  if (!/^https?:\/\//i.test(text)) return false
+  try {
+    const url = new URL(text)
+    return url.hostname !== '' && (url.protocol === 'http:' || url.protocol === 'https:')
+  } catch {
+    return false
+  }
+}
 
 /** 只用到 fetch 的这一小块，测试可替换。 */
 export interface RegistryFetch {
@@ -15,6 +37,8 @@ export interface RegistryFetch {
 }
 
 export interface FetchLatestOptions {
+  /** 选中的源；不传就用 npmjs。 */
+  registry?: string
   fetch?: RegistryFetch
   timeoutMs?: number
 }
@@ -32,7 +56,7 @@ export async function fetchLatestVersion(options: FetchLatestOptions = {}): Prom
   const timer = setTimeout(() => controller.abort(), timeoutMs)
   let response: Awaited<ReturnType<RegistryFetch>>
   try {
-    response = await doFetch(REGISTRY_URL, {
+    response = await doFetch(packageUrl(options.registry ?? REGISTRY_PRESETS.npmjs), {
       headers: { accept: 'application/vnd.npm.install-v1+json, application/json' },
     })
   } catch (error) {

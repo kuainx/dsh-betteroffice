@@ -42,8 +42,13 @@ export function listInstalledRuntimes(home: string, deps: RuntimeScanDeps): stri
 }
 
 /** `npm install` 的参数：装进私有目录，cache 也私有，不动全局。 */
-export function npmInstallArgs(opts: { prefix: string; version: string; cacheDir: string }): string[] {
-  return [
+export function npmInstallArgs(opts: {
+  prefix: string
+  version: string
+  cacheDir: string
+  registry?: string
+}): string[] {
+  const args = [
     'install',
     `@betteroffice/agents@${opts.version}`,
     '--prefix',
@@ -53,6 +58,10 @@ export function npmInstallArgs(opts: { prefix: string; version: string; cacheDir
     '--cache',
     opts.cacheDir,
   ]
+  if (opts.registry !== undefined && opts.registry !== '') {
+    args.push('--registry', opts.registry)
+  }
+  return args
 }
 
 /** 从已安装包的 package.json 文本里取版本号。 */

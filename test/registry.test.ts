@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { fetchLatestVersion } from '../src/registry.js'
+import { REGISTRY_PRESETS, fetchLatestVersion, isRegistryUrl, packageUrl } from '../src/registry.js'
 
 const respond = (body: unknown, status = 200) => async () => ({
   ok: status >= 200 && status < 300,
@@ -58,4 +58,29 @@ test('响应里没有可用版本号时报响应异常', async () => {
       },
     )
   }
+})
+
+test('自定义源拼出的包地址不会出现双斜杠', () => {
+  assert.equal(packageUrl(REGISTRY_PRESETS.npmmirror), 'https://registry.npmmirror.com/@betteroffice/agents')
+  assert.equal(packageUrl('https://npm.example.com/mirror/'), 'https://npm.example.com/mirror/@betteroffice/agents')
+})
+
+test('自定义源只认 http(s) 的完整地址', () => {
+  assert.equal(isRegistryUrl('https://registry.npmmirror.com/'), true)
+  assert.equal(isRegistryUrl('http://127.0.0.1:4873'), true)
+  for (const bad of ['javascript:alert(1)', 'file:///C:/npm', '//host/x', 'registry.npmjs.org', '', 'ftp://host']) {
+    assert.equal(isRegistryUrl(bad), false, bad)
+  }
+})
+
+test('检查更新打的是选中的那个源', async () => {
+  const seen: string[] = []
+  await fetchLatestVersion({
+    registry: REGISTRY_PRESETS.npmmirror,
+    fetch: async url => {
+      seen.push(String(url))
+      return (await respond({ 'dist-tags': { latest: '0.4.0' } })()) as never
+    },
+  })
+  assert.match(seen[0] ?? '', /^https:\/\/registry\.npmmirror\.com\/@betteroffice\/agents$/)
 })

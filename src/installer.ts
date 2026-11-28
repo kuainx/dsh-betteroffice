@@ -25,7 +25,7 @@ export interface InstallerDeps {
 }
 
 export interface Installer {
-  install(version: string): Promise<InstallResult>
+  install(version: string, registry?: string): Promise<InstallResult>
   /** 正在安装的版本：配置卡片用它提示「正在装」并挡住重复点击。 */
   inFlight(): readonly string[]
 }
@@ -41,7 +41,7 @@ function tail(text: string, lines = STDERR_TAIL): string {
 export function createInstaller(deps: InstallerDeps): Installer {
   const pending = new Map<string, Promise<InstallResult>>()
 
-  async function run(version: string): Promise<InstallResult> {
+  async function run(version: string, registry: string | undefined): Promise<InstallResult> {
     const dir = runtimeDirFor(deps.home, version)
     const cliPath = cliPathFor(deps.home, version)
     if (deps.exists(cliPath)) {
@@ -50,9 +50,11 @@ export function createInstaller(deps: InstallerDeps): Installer {
     }
 
     await deps.mkdir(dir)
-    const result = await deps.run('npm', npmInstallArgs({ prefix: dir, version, cacheDir: join(dir, '.npm-cache') }), {
-      cwd: dir,
-    })
+    const result = await deps.run(
+      'npm',
+      npmInstallArgs({ prefix: dir, version, cacheDir: join(dir, '.npm-cache'), registry }),
+      { cwd: dir },
+    )
     if (result.code !== 0) {
       throw new DomainError(
         'install-failed',
@@ -70,15 +72,16 @@ export function createInstaller(deps: InstallerDeps): Installer {
   }
 
   return {
-    install(version: string): Promise<InstallResult> {
+    install(version: string, registry?: string): Promise<InstallResult> {
       if (!isVersion(version)) {
         return Promise.reject(
           new DomainError('invalid-version', `版本号看起来不对：${JSON.stringify(version)}。请用形如 0.4.0 的版本号。`),
         )
       }
+      // shortcut: 去重只看版本号。同一版本同时来自两个源的可能性很低，真出现时后者会复用前者的安装任务。
       const running = pending.get(version)
       if (running !== undefined) return running
-      const task = run(version).finally(() => pending.delete(version))
+      const task = run(version, registry).finally(() => pending.delete(version))
       pending.set(version, task)
       return task
     },
