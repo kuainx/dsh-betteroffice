@@ -157,3 +157,34 @@ git push
 ## 本机 registry 的坑（会导致发布失败）
 
 这台机器 `npm config get registry` = `https://registry.npmmirror.com/`。镜像是只读的，`npm publish` 打到镜像上会直接失败。所以本地登录与发布都要显式带 `--registry=https://registry.npmjs.org`（上面的命令已带）；CI 里 `actions/setup-node` 的 `registry-url` 已指向官方源，不受影响。
+
+## 实际发布记录（已验证）
+
+| 版本  | 怎么发的                                               | 结果                                                                 |
+| ----- | ------------------------------------------------------ | -------------------------------------------------------------------- |
+| 0.1.0 | 本地手动：`npm login` → `npm publish`                  | 第一次 403（账号 2FA），带 `--otp` 重跑成功                          |
+| 0.1.1 | OIDC。第一次 CI 挂了（见坑 2），修好后 Re-run all jobs | `gitHead` = 5789440，`_npmUser` = GitHub Actions，带 SLSA provenance |
+| 0.1.2 | OIDC。改版本号推 main，全自动                          | `gitHead` = 49de6a2 = 当次 HEAD，tag `v0.1.2` 由 workflow 自动创建   |
+
+两条命令就能确认一次发布是真的（本机 npm 缓存目录写不进去时，把 `--cache` 指到仓库里）：
+
+```powershell
+npm view dsh-betteroffice dist-tags --registry=https://registry.npmjs.org --cache .\.npm-cache
+npm view dsh-betteroffice@<版本> gitHead _npmUser.name dist.attestations.provenance.predicateType --cache .\.npm-cache
+```
+
+`_npmUser.name` 是 `GitHub Actions` 而不是你自己的用户名，说明 OIDC 换令牌成功；`gitHead` 与本地提交对得上，说明发出去的确实是你以为的那个提交。
+
+### 坑 1：`0.0.0-stage` 是哪来的
+
+首次发布时 registry 上会先出现一个 `0.0.0-stage` 版本（`stub: true`，2 个文件 338 B，描述是 `Temporary package placeholder for staged publishing`）。它是 npm 在正式上传前建的占位版本，归属仍是发布者本人 —— 不是被抢注。那一小段时间里 `dist-tags.latest` 指向它，如果正好在这几十秒内跑 `npm view`，会看到版本是 `0.0.0-stage`，换掉缓存再查就是真实版本。它不参与安装，不用清理（也删不掉）。
+
+### 坑 2：CI 上挂掉的测试，本地是绿的
+
+`0.1.1` 第一次 CI 就红在这里：`lib/test/mcp.test.js` 的「子进程不肯退出时 close 也不无限等」报 `Promise resolution is still pending but the event loop has already resolved`，同一进程里后面 20 多条测试被连带标记成 `cancelledByParent`。
+
+根因是 `src/mcp.ts` 的 `close()` 给兜底定时器加了 `unref()`：假子进程永远不退出时，事件循环里唯一还没结束的对象就是这个定时器，`unref` 之后进程直接走完，`await` 永不返回。本地 node 24 容忍这种写法、CI 的 node 22 不容忍 —— **所以「本地绿」对这类问题不构成证据**；改动碰到事件循环或定时器时，要在 node 22 上跑一次 `npm run check`。
+
+### 待办（不影响发布）
+
+`package-lock.json` 里 52 个 `resolved` 仍指向 `registry.npmmirror.com`。CI 已经能装（0.1.1、0.1.2 都跑通了），只是从国内镜像拉包慢。想统一成官方源：`npm install --package-lock-only --registry=https://registry.npmjs.org`，用 `git diff` 复核后单独提交。
