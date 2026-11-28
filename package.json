@@ -1,6 +1,6 @@
 {
   "name": "dsh-betteroffice",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "在 DSH 里打开、读取并编辑 Word/Excel/PowerPoint 文档（BetterOffice MCP 宿主插件）",
   "keywords": [
     "betteroffice",
