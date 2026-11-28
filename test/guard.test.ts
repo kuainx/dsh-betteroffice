@@ -1,6 +1,11 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { decideMcpCall } from '../src/guard.js'
+import { decideMcpCall, deniedReason } from '../src/guard.js'
+
+test('裸工具名也查得到禁规则：透传工具和宿主守卫共用一张表', () => {
+  assert.match(deniedReason('office_export') ?? '', /betteroffice_deliver/)
+  assert.equal(deniedReason('xlsx_outline'), undefined)
+})
 
 test('挡住 agent 直接调用 office_export：写文件必须走交付或替换工具', () => {
   const decision = decideMcpCall('mcp__bo_a71c2e90__office_export')

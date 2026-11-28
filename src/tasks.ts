@@ -8,6 +8,7 @@ import { cleanupWorkspace, type CleanupDecision } from './cleanup.js'
 import type { ConfigData } from './config.js'
 import { pickDeliveryTarget, type Delivery } from './deliver.js'
 import { DomainError } from './errors.js'
+import { deniedReason } from './guard.js'
 import { readToolJson } from './invoke.js'
 import type { McpConnection, McpSpawnSpec } from './mcp.js'
 import { sha256File, type ResolvedDoc } from './paths.js'
@@ -87,6 +88,13 @@ export type TaskRegistry = {
   deliver(sessionId: string, taskId: string, input?: { dir?: string }): Promise<Delivery>
   replace(sessionId: string, taskId: string, input?: { confirm?: boolean }): Promise<ReplaceOutcome>
   close(scope: unknown, sessionId: string, taskId: string, input?: { discard?: boolean }): Promise<void>
+  /** 把任意 MCP 工具原样转给该任务的连接；导出/列目录这类被守卫禁掉的工具会被拒。 */
+  call(
+    sessionId: string,
+    taskId: string,
+    tool: string,
+    args: Record<string, unknown>,
+  ): Promise<unknown>
   closeSession(sessionId: string): Promise<void>
   get(sessionId: string, taskId: string): TaskRecord
   list(sessionId: string): TaskRecord[]
@@ -420,6 +428,13 @@ export function createTaskRegistry(deps: TaskRegistryDeps): TaskRegistry {
 
     get(sessionId, taskId) {
       return lookup(sessionId, taskId).record
+    },
+
+    async call(sessionId, taskId, tool, args) {
+      const entry = lookup(sessionId, taskId)
+      const reason = deniedReason(tool)
+      if (reason !== undefined) throw new DomainError('tool-denied', reason)
+      return await entry.connection.call(tool, args)
     },
 
     list(sessionId) {

@@ -17,9 +17,14 @@ const DENIED: Record<string, string> = {
     '不要用 MCP 的列目录工具：用 betteroffice_open 打开文档，然后按任务 id 继续。',
 }
 
+/** 按裸 MCP 工具名查禁规则：透传工具和宿主侧守卫共用同一张表。 */
+export function deniedReason(toolName: string): string | undefined {
+  return DENIED[toolName]
+}
+
 export function decideMcpCall(toolName: string): GuardDecision | undefined {
   const match = MANAGED_TOOL.exec(toolName)
   if (match === null) return undefined
-  const reason = DENIED[match[1] ?? '']
+  const reason = deniedReason(match[1] ?? '')
   return reason === undefined ? undefined : { kind: 'deny', reason }
 }

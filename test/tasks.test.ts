@@ -42,6 +42,23 @@ test('关闭时释放挂载并标记任务不可再用', async () => {
   assert.throws(() => reg.get('s1', task.taskId), (error: never) => (error as { code?: string }).code === 'task-not-found')
 })
 
+test('透传调用直接落到该任务的连接上', async () => {
+  const { reg, calls } = harness()
+  const task = await reg.open({}, 's1', { path: 'a.docx', cwd: 'C:/d' })
+  const result = await reg.call('s1', task.taskId, 'xlsx_outline', { document: 'doc1' })
+  assert.deepEqual(calls.at(-1), { name: 'xlsx_outline', args: { document: 'doc1' } })
+  assert.equal(Array.isArray((result as { content: unknown[] }).content), true)
+})
+
+test('透传也不许绕过守卫去导出或列目录', async () => {
+  const { reg } = harness()
+  const task = await reg.open({}, 's1', { path: 'a.docx', cwd: 'C:/d' })
+  await assert.rejects(
+    () => reg.call('s1', task.taskId, 'office_export', {}),
+    (error: { code?: string }) => error.code === 'tool-denied' && /betteroffice_deliver/.test(String(error)),
+  )
+})
+
 test('别的会话用同一 taskId 被拒', async () => {
   const { reg } = harness()
   const task = await reg.open({}, 's1', { path: 'a.docx', cwd: 'C:/d' })

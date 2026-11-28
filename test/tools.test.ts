@@ -23,6 +23,7 @@ function makeRegistry(overrides: Partial<TaskRegistry> = {}): TaskRegistry {
     replace: async () => ({ taskId: 't1', path: 'C:/d/a.docx', sha256: 's', bytes: 1 }),
     close: async () => {},
     closeSession: async () => {},
+    call: async () => ({ content: [] }),
     get: () => record,
     list: () => [],
     ...overrides,
@@ -53,6 +54,27 @@ test('open 工具返回含任务 id 的文本', async () => {
   const blocks = open.output.render({ path: 'a.docx' }, value)
   assert.match(JSON.stringify(blocks), /a71c2e90/)
   assert.equal(blocks[0]?.type, 'text')
+})
+
+test('透传工具把工具名和参数原样转给该任务的连接', async () => {
+  const calls: unknown[] = []
+  const registry = makeRegistry({
+    call: async (...args) => {
+      calls.push(args)
+      return { content: [{ type: 'text', text: 'ok' }] }
+    },
+  })
+  const defs = createToolDefinitions({ registry, sessionId: 's1', config: cfg })
+  const pass = defs.find((definition) => definition.name === 'betteroffice_call')!
+  const value = await pass.execute({ task: 't1', tool: 'xlsx_outline', args: { document: 'doc1' } }, undefined)
+  assert.deepEqual(calls, [['s1', 't1', 'xlsx_outline', { document: 'doc1' }]])
+  assert.match(JSON.stringify(pass.output.render({}, value)), /ok/)
+})
+
+test('透传工具缺 tool 参数时给中文错误', async () => {
+  const defs = createToolDefinitions({ registry: makeRegistry(), sessionId: 's1', config: cfg })
+  const pass = defs.find((definition) => definition.name === 'betteroffice_call')!
+  await assert.rejects(() => pass.execute({ task: 't1' }, undefined), /缺少参数 tool/)
 })
 
 test('replace 只有 confirm 为 true 才算用户同意', async () => {

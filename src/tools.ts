@@ -11,6 +11,7 @@ export const TOOL_NAMES = [
   'betteroffice_deliver',
   'betteroffice_replace',
   'betteroffice_close',
+  'betteroffice_call',
 ] as const
 
 export type TextBlock = { type: 'text'; text: string }
@@ -202,7 +203,33 @@ export function createToolDefinitions(deps: ToolDeps): ToolDefinition[] {
     },
   }
 
-  return [open, list, checkpoint, deliver, replace, close]
+  const call: ToolDefinition = {
+    name: 'betteroffice_call',
+    description:
+      '把任意 BetterOffice MCP 工具转给某个任务执行——改内容都用它。' +
+      '工具名用裸名（如 docx_replace_text、xlsx_write_range、pptx_edit、office_read、xlsx_outline），' +
+      '参数是与该工具一致的 JSON 对象，文档参数用 betteroffice_open 返回的 document。' +
+      'office_export 与 office_files 不让直接调：写文件用 betteroffice_deliver / betteroffice_replace，找文件用 betteroffice_open。',
+    parameters: {
+      type: 'object',
+      properties: {
+        task: { type: 'string', description: 'betteroffice_open 返回的 taskId' },
+        tool: { type: 'string', description: 'MCP 工具名，裸名，不带 mcp__bo_ 前缀' },
+        args: { type: 'object', description: '该工具的参数对象', additionalProperties: true },
+      },
+      required: ['task', 'tool'],
+      additionalProperties: false,
+    },
+    output: { schema: OUTPUT_SCHEMA, render: renderJson },
+    async execute(args) {
+      const taskId = requiredString(args, 'task', '任务 id')
+      const tool = requiredString(args, 'tool', 'MCP 工具名')
+      const input = (args['args'] ?? {}) as Record<string, unknown>
+      return await deps.registry.call(deps.sessionId, taskId, tool, input)
+    },
+  }
+
+  return [open, list, checkpoint, deliver, replace, close, call]
 }
 
 export function registerTools(
