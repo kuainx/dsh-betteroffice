@@ -9,7 +9,10 @@ type FakeContext = {
   inject(deps: string[], fn: (ctx: unknown) => void): void
 }
 
-function fakeContext(): { ctx: FakeContext; listeners: Map<string, ((...args: unknown[]) => void)[]>; cleanups: (() => void)[] } {
+function fakeContext(
+  services: Record<string, unknown> = {},
+  injected: string[][] = [],
+): { ctx: FakeContext; listeners: Map<string, ((...args: unknown[]) => void)[]>; cleanups: (() => void)[] } {
   const listeners = new Map<string, ((...args: unknown[]) => void)[]>()
   const cleanups: (() => void)[] = []
   const ctx: FakeContext = {
@@ -24,13 +27,37 @@ function fakeContext(): { ctx: FakeContext; listeners: Map<string, ((...args: un
       if (typeof cleanup === 'function') cleanups.push(cleanup)
       return () => {}
     },
-    get: () => undefined,
-    inject(_deps, fn) {
+    get: name => services[name],
+    inject(deps, fn) {
+      injected.push(deps)
       fn(ctx)
     },
   }
   return { ctx, listeners, cleanups }
 }
+
+test('apply 把配置卡片的两条路由挂到宿主 webServer 上', () => {
+  const routes: { method: string; path: string }[] = []
+  const injected: string[][] = []
+  const { ctx } = fakeContext(
+    {
+      webServer: {
+        register: (route: { method: string; path: string }) => {
+          routes.push(route)
+          // 跟宿主一致：返回单个注销函数，不是数组。
+          return () => {}
+        },
+      },
+    },
+    injected,
+  )
+  apply(ctx as never, undefined)
+  assert.ok(injected.some(names => names.includes('webServer')))
+  assert.deepEqual(
+    routes.map(route => route.path),
+    ['/api/betteroffice/status', '/api/betteroffice/action'],
+  )
+})
 
 test('apply 订阅 agent 生命周期并注册总清理', () => {
   const { ctx, listeners, cleanups } = fakeContext()

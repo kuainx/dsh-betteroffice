@@ -129,6 +129,7 @@ test('安装失败时把中文原因原样返回给用户', async () => {
       install: async () => {
         throw Object.assign(new Error('安装失败（退出码 1）：network timeout'), { code: 'install-failed' })
       },
+      inFlight: () => [],
     },
     latestVersion: async () => '0.4.0',
     installedVersions: () => [],

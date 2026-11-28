@@ -10,11 +10,13 @@
       "types": "./lib/src/index.d.ts",
       "default": "./lib/src/index.js"
     },
+    "./client": "./client.js",
     "./package.json": "./package.json"
   },
   "files": [
     "lib/src",
     "lib/*.d.ts",
+    "client.js",
     "cordis.patch.yml",
     "README.md"
   ],
@@ -27,6 +29,10 @@
     "manifestVersion": 1,
     "bundle": {
       "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": []
     }
   },
   "keywords": [
