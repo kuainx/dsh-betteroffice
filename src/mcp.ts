@@ -224,8 +224,9 @@ export function createConnector(deps: McpConnectorDeps = {}): McpConnector {
         live.delete(spec.serverName)
         const timeoutMs = deps.closeTimeoutMs ?? DEFAULT_CLOSE_TIMEOUT_MS
         await new Promise<void>((resolve) => {
+          // 不能 unref：这个定时器就是「兜底等多久」本身，unref 之后事件循环一空，
+          // 进程会直接退出，await 再也回不来（子进程已经收不到信号时尤其明显）。
           const timer = setTimeout(resolve, timeoutMs)
-          timer.unref?.()
           void exited.then(() => {
             clearTimeout(timer)
             resolve()
