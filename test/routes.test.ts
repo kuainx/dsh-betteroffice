@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import type { ConfigData } from '../src/config.js'
 import { DomainError } from '../src/errors.js'
-import { createControlApi, type ControlDeps } from '../src/routes.js'
+import { createControlApi, registerControlRoutes, type ControlDeps } from '../src/routes.js'
 
 function fakeDeps(overrides: Partial<ControlDeps> = {}): ControlDeps {
   const config: ConfigData = {
@@ -59,6 +59,79 @@ test('同一版本安装中再次请求返回 409', async () => {
   const api = createControlApi(fakeDeps({ inFlight: () => ['0.4.0'] }))
   const r = await api.action({ action: 'install', version: '0.4.0' })
   assert.equal(r.status, 409)
+})
+
+interface FakeRoute {
+  method: string
+  path: string
+  handler: (ctx: unknown, request: unknown, res: unknown) => Promise<void>
+}
+
+interface Written {
+  status: number
+  body: unknown
+}
+
+function fakeRoutes(options: { rejection?: { status: number; error: string }; body?: unknown } = {}) {
+  const routes: FakeRoute[] = []
+  const written: Written[] = []
+  const calls: string[] = []
+  const deps = fakeDeps({
+    install: async (version: string) => {
+      calls.push(version)
+      return { version, dir: `C:/h/runtime/${version}`, cliPath: `C:/h/runtime/${version}/cli.js` }
+    },
+  })
+  const disposers = registerControlRoutes({
+    web: {
+      register: route => {
+        routes.push(route as FakeRoute)
+        return [() => {}]
+      },
+    },
+    api: createControlApi(deps),
+    admitRoute: () => options.rejection,
+    writeJson: (res, status, body) => {
+      written.push({ status, body })
+      void res
+    },
+    readJsonBody: async () => options.body,
+  })
+  return { routes, written, calls, disposers }
+}
+
+test('非授权来源的动作请求被拒且不调 install', async () => {
+  const { routes, written, calls } = fakeRoutes({
+    rejection: { status: 403, error: 'forbidden' },
+    body: { action: 'install', version: '0.4.0' },
+  })
+  await routes[1]!.handler({}, {}, {})
+  assert.equal(written[0]?.status, 403)
+  assert.match(JSON.stringify(written[0]?.body), /forbidden/)
+  assert.deepEqual(calls, [])
+})
+
+test('授权来源的 POST 走通并写 JSON', async () => {
+  const { routes, written } = fakeRoutes({ body: { action: 'check' } })
+  await routes[1]!.handler({}, {}, {})
+  assert.equal(written[0]?.status, 200)
+  assert.equal((written[0]?.body as { ok: boolean }).ok, true)
+})
+
+test('GET status 在授权下返回快照', async () => {
+  const { routes, written } = fakeRoutes()
+  const disposers = routes.map(route => route.path)
+  assert.deepEqual(disposers, ['/api/betteroffice/status', '/api/betteroffice/action'])
+  await routes[0]!.handler({}, {}, {})
+  assert.equal(written[0]?.status, 200)
+  assert.ok((written[0]?.body as { runtime: unknown }).runtime !== undefined)
+})
+
+test('请求体不是合法 JSON 时返回 400', async () => {
+  const { routes, written } = fakeRoutes({ body: undefined })
+  await routes[1]!.handler({}, {}, {})
+  assert.equal(written[0]?.status, 400)
+  assert.match(JSON.stringify(written[0]?.body), /合法 JSON/)
 })
 
 test('registry 不可用返回 500 与中文原因', async () => {

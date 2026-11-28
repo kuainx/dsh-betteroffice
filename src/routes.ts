@@ -34,6 +34,77 @@ function statusOf(error: unknown): 400 | 409 | 500 {
   return BAD_REQUEST_CODES.has(error.code) ? 400 : 500
 }
 
+/** 宿主 webServer 的最小形状：register 返回一组注销函数。 */
+export interface RouteWeb {
+  register(route: ControlRoute): readonly (() => void)[]
+}
+
+/** 一条路由：宿主把 (ctx, request, response) 交给 handler。 */
+export interface ControlRoute {
+  method: 'GET' | 'POST'
+  path: string
+  handler(ctx: unknown, request: unknown, response: unknown): Promise<void>
+}
+
+export interface RegisterRoutesInput {
+  web: RouteWeb
+  api: { status(): Promise<ApiResult>; action(raw: unknown): Promise<ApiResult> }
+  admitRoute: (ctx: unknown, request: unknown) => { status: number; error: string } | undefined
+  writeJson: (response: unknown, status: number, body: unknown) => void
+  readJsonBody: (request: unknown) => Promise<unknown>
+}
+
+export const STATUS_PATH = '/api/betteroffice/status'
+export const ACTION_PATH = '/api/betteroffice/action'
+
+/** 把控制接口挂到宿主 webServer 上；每条路由第一件事都是过访问围栏。 */
+export function registerControlRoutes(input: RegisterRoutesInput): readonly (() => void)[] {
+  const { web, api, admitRoute, writeJson, readJsonBody } = input
+
+  async function guarded(
+    ctx: unknown,
+    request: unknown,
+    response: unknown,
+    run: () => Promise<ApiResult> | ApiResult,
+  ): Promise<void> {
+    const rejection = admitRoute(ctx, request)
+    if (rejection !== undefined) {
+      writeJson(response, rejection.status, { ok: false, error: rejection.error })
+      return
+    }
+    try {
+      const result = await run()
+      writeJson(response, result.status, result.body)
+    } catch (error) {
+      writeJson(response, 500, { ok: false, error: error instanceof Error ? error.message : String(error) })
+    }
+  }
+
+  const statusRoute: ControlRoute = {
+    method: 'GET',
+    path: STATUS_PATH,
+    handler: (ctx, request, response) => guarded(ctx, request, response, () => api.status()),
+  }
+
+  const actionRoute: ControlRoute = {
+    method: 'POST',
+    path: ACTION_PATH,
+    handler: (ctx, request, response) =>
+      guarded(ctx, request, response, async () => {
+        const body = await readJsonBody(request)
+        if (body === undefined) {
+          return {
+            status: 400 as const,
+            body: { ok: false, error: '请求体不是合法 JSON。请发送 {"action":"check"} 这样的对象。' },
+          }
+        }
+        return api.action(body)
+      }),
+  }
+
+  return [...web.register(statusRoute), ...web.register(actionRoute)]
+}
+
 export function createControlApi(deps: ControlDeps): {
   status(): Promise<ApiResult>
   action(raw: unknown): Promise<ApiResult>
