@@ -8,6 +8,23 @@ import { sha256File } from '../src/paths.js'
 import { readLedger } from '../src/workspace.js'
 import { exportingTools, fakeTools, harness } from './tasks-harness.js'
 
+test('打开文档前先等启动恢复完成，避免读到半途的事务', async () => {
+  let release = (): void => {}
+  const gate = new Promise<void>((resolve) => {
+    release = () => resolve()
+  })
+  const { reg } = harness({ tools: fakeTools().view, awaitRecovery: () => gate })
+  let opened = false
+  const pending = reg.open({}, 's1', { path: 'a.docx', cwd: 'C:/d' }).then(() => {
+    opened = true
+  })
+  await new Promise((resolve) => setTimeout(resolve, 20))
+  assert.equal(opened, false, '恢复还没完成就不该打开文档')
+  release()
+  await pending
+  assert.equal(opened, true)
+})
+
 test('只读打开挂载 bo_<id8> 且返回任务', async () => {
   const { reg, mounted } = harness()
   const task = await reg.open({}, 's1', { path: 'a.docx', cwd: 'C:/d' })

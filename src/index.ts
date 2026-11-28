@@ -7,6 +7,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import { dshHome, settingsEntryScope } from '@hyzyn/dsh-kit'
 import { Config, resolveConfig, type ConfigData } from './config.js'
 import { createBetterOfficeCommand, type CommandApi } from './commands.js'
+import { decideMcpCall } from './guard.js'
 import { createMounter, type McpClientModule } from './mount.js'
 import { resolveDocumentPath } from './paths.js'
 import { resolveMcpRuntime } from './runtime.js'
@@ -103,7 +104,10 @@ export function apply(ctx: Context, config?: ConfigData): void {
   host.on(
     'tools/pre-execute',
     ((execution: { name?: string }, next: () => unknown) => {
-      if (execution?.name !== 'betteroffice_replace') return next()
+      const name = execution?.name ?? ''
+      const guard = decideMcpCall(name)
+      if (guard !== undefined) return guard
+      if (name !== 'betteroffice_replace') return next()
       return Promise.resolve(next()).then((rest) => {
         if (rest !== null && typeof rest === 'object' && (rest as { kind?: string }).kind === 'deny') {
           return rest
@@ -115,6 +119,11 @@ export function apply(ctx: Context, config?: ConfigData): void {
       })
     }) as (...args: unknown[]) => void,
   )
+
+  // 上次替换如果中断在半路，启动时按事务日志还原或收尾；打开文档前要等它结束。
+  const recovery = recoverCommits({ home: dshHome(), logger: log }).catch((error: unknown) => {
+    log('检查未完成的替换事务失败', error)
+  })
 
   const registry: TaskRegistry = createTaskRegistry({
     mounter,
@@ -136,12 +145,8 @@ export function apply(ctx: Context, config?: ConfigData): void {
     home: dshHome(),
     // 回收站是平台能力：非 Windows 上这里会以 recycle-unavailable 结束，工具不会退化成永久删除。
     recycle: path => recycleFile(path, { run: runPowershell }),
+    awaitRecovery: () => recovery,
     logger: log,
-  })
-
-  // 上次替换如果中断在半路，启动时按事务日志还原或收尾。
-  void recoverCommits({ home: dshHome(), logger: log }).catch((error: unknown) => {
-    log('检查未完成的替换事务失败', error)
   })
 
   const sessionIds = new Set<string>()

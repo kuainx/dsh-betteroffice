@@ -74,6 +74,7 @@ export function harness(
       backupPath: string
     }>
     cleanupWorkspace?: (opts: unknown) => Promise<{ remove: boolean; reason: string }>
+    awaitRecovery?: () => Promise<unknown>
   } = {},
 ) {
   const mounted: string[] = []
@@ -117,6 +118,7 @@ export function harness(
     recycle: options.recycle ?? (async () => {}),
     ...(options.replaceFile === undefined ? {} : { replaceFile: options.replaceFile as never }),
     ...(options.cleanupWorkspace === undefined ? {} : { cleanupWorkspace: options.cleanupWorkspace as never }),
+    ...(options.awaitRecovery === undefined ? {} : { awaitRecovery: options.awaitRecovery }),
   })
   return { reg, mounted, disposed, copies }
 }

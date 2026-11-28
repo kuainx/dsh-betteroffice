@@ -1,0 +1,25 @@
+/**
+ * agent 直接调 MCP 工具的拦截规则。
+ *
+ * BetterOffice MCP 把写盘、列目录都暴露成工具，但插件对「写到哪、能看见哪些文件」有自己的判定，
+ * 所以这几条必须只走插件的工具（交付、替换），不让 agent 绕过去。
+ */
+
+/** 本插件挂载的 MCP 工具名：`mcp__bo_<8位任务id>__<工具名>`。 */
+const MANAGED_TOOL = /^mcp__bo_[0-9a-f]{8}__(.+)$/
+
+export type GuardDecision = { kind: 'deny'; reason: string }
+
+const DENIED: Record<string, string> = {
+  office_export:
+    '不要直接调用 MCP 的导出工具：写文件请用 betteroffice_deliver（另存）或 betteroffice_replace（用户确认后替换原件）。',
+  office_files:
+    '不要用 MCP 的列目录工具：用 betteroffice_open 打开文档，然后按任务 id 继续。',
+}
+
+export function decideMcpCall(toolName: string): GuardDecision | undefined {
+  const match = MANAGED_TOOL.exec(toolName)
+  if (match === null) return undefined
+  const reason = DENIED[match[1] ?? '']
+  return reason === undefined ? undefined : { kind: 'deny', reason }
+}

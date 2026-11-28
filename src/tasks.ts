@@ -78,6 +78,8 @@ export type TaskRegistryDeps = {
   recycle?: (path: string) => Promise<void>
   replaceFile?: typeof replaceOriginal
   cleanupWorkspace?: (opts: Parameters<typeof cleanupWorkspace>[0]) => Promise<CleanupDecision>
+  /** 启动时的中断事务恢复：打开文档前必须等它结束，否则可能读到半途的文件。 */
+  awaitRecovery?: () => Promise<unknown>
   logger?: (message: string, error?: unknown) => void
 }
 
@@ -192,6 +194,7 @@ export function createTaskRegistry(deps: TaskRegistryDeps): TaskRegistry {
 
   return {
     async open(scope, sessionId, input) {
+      await deps.awaitRecovery?.()
       const mode = input.mode ?? 'read'
       const doc = await deps.resolveDocument(input.path, input.cwd)
       const config = deps.config()

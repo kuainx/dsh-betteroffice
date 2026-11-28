@@ -73,7 +73,7 @@
 
 ## 已知限制
 
-- 只读打开时，BetterOffice MCP 自身仍会注册 `office_files`（列目录）。插件已把这个工具从自己的工具面排除，但它仍出现在 `mcp__bo_<任务ID>__*` 里。
+- BetterOffice MCP 会同时暴露 `office_export`（写文件）和 `office_files`（列目录）。插件在调用前把它们拦掉：前者只能通过 `betteroffice_deliver` / `betteroffice_replace` 使用，后者直接拒绝。工具名仍会出现在 `mcp__bo_<任务ID>__*` 里，但调用会被拒绝并给出改用哪条工具。
 - 替换原文件依赖系统回收站：非 Windows 平台、网络盘等场景只能另存，不会降级成永久删除。
 - 「自动」与「开启」两种清理档位目前的判定完全相同，差别留给后续版本（例如由 Agent 明确表态保留时跳过）。
 
