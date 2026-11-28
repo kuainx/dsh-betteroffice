@@ -24,6 +24,7 @@ function makeRegistry(overrides: Partial<TaskRegistry> = {}): TaskRegistry {
     close: async () => {},
     closeSession: async () => {},
     call: async () => ({ content: [] }),
+    tools: async () => ({ tools: [] }),
     get: () => record,
     list: () => [],
     ...overrides,
@@ -32,7 +33,7 @@ function makeRegistry(overrides: Partial<TaskRegistry> = {}): TaskRegistry {
 
 const cfg = () => ({ workspaceMode: 'auto', cleanupMode: 'auto', nodePath: '', runtimeVersion: '' }) as const
 
-test('定义 6 个工具且每个都带可渲染的 output', () => {
+test('定义 7 个工具且每个都带可渲染的 output', () => {
   const defs = createToolDefinitions({ registry: makeRegistry(), sessionId: 's1', config: cfg })
   assert.deepEqual(
     defs.map((definition) => definition.name),
@@ -112,6 +113,26 @@ test('缺少必填参数时给中文错误', async () => {
   const defs = createToolDefinitions({ registry: makeRegistry(), sessionId: 's1', config: cfg })
   const open = defs[0]!
   await assert.rejects(() => open.execute({}, undefined), /缺少参数 path/)
+})
+
+test('betteroffice_tools 把子进程的工具清单交给模型', async () => {
+  const list = { tools: [{ name: 'docx_edit', inputSchema: { required: ['document'] } }] }
+  const registry = makeRegistry({ tools: async () => list })
+  const defs = createToolDefinitions({ registry, sessionId: 's1', config: cfg })
+  const shown = defs.find((definition) => definition.name === 'betteroffice_tools')!
+
+  assert.deepEqual(await shown.execute({ task: 't1' }, undefined), list)
+  assert.match(JSON.stringify(shown.output.render({}, list)), /docx_edit/)
+})
+
+test('透传缺 tool 时说清参数该放哪', async () => {
+  const defs = createToolDefinitions({ registry: makeRegistry(), sessionId: 's1', config: cfg })
+  const pass = defs.find((definition) => definition.name === 'betteroffice_call')!
+
+  await assert.rejects(
+    () => pass.execute({ task: 't1' }, undefined),
+    /tool 和 args 都要放在顶层/,
+  )
 })
 
 test('registerTools 把定义逐个注册', () => {

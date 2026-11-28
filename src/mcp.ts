@@ -9,6 +9,7 @@ export type McpSpawnSpec = { serverName: string; command: string; args: string[]
 export type McpConnection = {
   serverName: string
   call(name: string, args: Record<string, unknown>): Promise<unknown>
+  list(): Promise<unknown>
   close(): Promise<void>
 }
 
@@ -193,6 +194,15 @@ export function createConnector(deps: McpConnectorDeps = {}): McpConnector {
           throw new DomainError('mcp-tool-failed', failureText(result))
         }
         return result
+      },
+      async list() {
+        if (closed) throw disconnected()
+        return await request(
+          'tools/list',
+          {},
+          deps.callTimeoutMs ?? DEFAULT_CALL_TIMEOUT_MS,
+          () => new DomainError('mcp-timeout', '取工具清单超时，BetterOffice 可能卡住了。'),
+        )
       },
       async close() {
         if (!closed) {

@@ -3,6 +3,7 @@
 import { mkdir, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import type { ConfigData } from '../src/config.js'
+import { DomainError } from '../src/errors.js'
 import type { McpConnection, McpSpawnSpec } from '../src/mcp.js'
 import { createTaskRegistry } from '../src/tasks.js'
 
@@ -19,6 +20,8 @@ export function harness(
   options: {
     failConnect?: boolean
     failOpen?: boolean
+    failCall?: string
+    toolList?: unknown
     document?: string
     copyFile?: (from: string, to: string) => Promise<void>
     makeTempDir?: () => Promise<string>
@@ -48,8 +51,12 @@ export function harness(
       mounted.push(spec.serverName)
       return {
         serverName: spec.serverName,
+        list: async () => options.toolList ?? { tools: [] },
         call: async (name, args) => {
           calls.push({ name, args })
+          if (options.failCall !== undefined && name !== 'office_open' && name !== 'office_export') {
+            throw new DomainError('mcp-tool-failed', options.failCall)
+          }
           if (options.failOpen === true) throw new Error('office_open 失败')
           if (name === 'office_export') {
             const target = join(spec.cwd, String(args['path']))

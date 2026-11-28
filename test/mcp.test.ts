@@ -148,6 +148,18 @@ describe('MCP 连接器', () => {
     })
   })
 
+  test('list 发 tools/list 并把结果原样返回', async () => {
+    const { child, ready } = connect('list')
+    const connection = await ready
+
+    const pending = connection.list()
+    const written = request(child.writes.at(-1))
+    assert.equal(written.method, 'tools/list')
+
+    child.reply({ jsonrpc: '2.0', id: written.id, result: { tools: [{ name: 'docx_edit' }] } })
+    assert.deepEqual(await pending, { tools: [{ name: 'docx_edit' }] })
+  })
+
   test('initialize 迟迟不回则 mcp-start-failed', async () => {
     const { ready } = connect('timeout', { answerInitialize: false, startupTimeoutMs: 10 })
 

@@ -98,6 +98,8 @@ export type TaskRegistry = {
   closeSession(sessionId: string): Promise<void>
   get(sessionId: string, taskId: string): TaskRecord
   list(sessionId: string): TaskRecord[]
+  /** 该任务子进程的工具清单（tools/list 原样返回），给 agent 看名字与参数。 */
+  tools(sessionId: string, taskId: string): Promise<unknown>
 }
 
 export function createTaskRegistry(deps: TaskRegistryDeps): TaskRegistry {
@@ -431,10 +433,39 @@ export function createTaskRegistry(deps: TaskRegistryDeps): TaskRegistry {
     },
 
     async call(sessionId, taskId, tool, args) {
-      const entry = lookup(sessionId, taskId)
+      let entry: Entry
+      try {
+        entry = lookup(sessionId, taskId)
+      } catch (error) {
+        if (error instanceof DomainError && error.code === 'task-not-found') {
+          throw new DomainError(
+            'task-not-found',
+            `${error.message}；这里要填 betteroffice_open 返回的任务 id。`,
+          )
+        }
+        throw error
+      }
       const reason = deniedReason(tool)
       if (reason !== undefined) throw new DomainError('tool-denied', reason)
-      return await entry.connection.call(tool, args)
+      try {
+        return await entry.connection.call(tool, args)
+      } catch (error) {
+        if (
+          error instanceof DomainError &&
+          error.code === 'mcp-tool-failed' &&
+          error.message.includes('INVALID_ARGUMENT')
+        ) {
+          throw new DomainError(
+            'mcp-tool-failed',
+            `${error.message}；先调 betteroffice_tools 看这个工具的 inputSchema。`,
+          )
+        }
+        throw error
+      }
+    },
+
+    async tools(sessionId, taskId) {
+      return await lookup(sessionId, taskId).connection.list()
     },
 
     list(sessionId) {

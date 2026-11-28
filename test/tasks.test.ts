@@ -223,3 +223,30 @@ test('编辑但不建工作文件夹时关闭任务不触发清理', async () =>
   await reg.close({}, 's1', task.taskId)
   assert.deepEqual(calls, [])
 })
+
+test('tools 把子进程的工具清单原样给回去', async () => {
+  const list = { tools: [{ name: 'docx_edit', inputSchema: { required: ['document'] } }] }
+  const { reg } = harness({ toolList: list })
+  const task = await reg.open({}, 's1', { path: 'a.docx', cwd: 'C:/d', mode: 'edit' })
+
+  assert.deepEqual(await reg.tools('s1', task.taskId), list)
+})
+
+test('任务 id 不存在时提示去 betteroffice_open 拿 id', async () => {
+  const { reg } = harness()
+
+  await assert.rejects(
+    () => reg.call('s1', 'none', 'office_read', {}),
+    /任务不存在或已关闭：none；这里要填 betteroffice_open 返回的任务 id/,
+  )
+})
+
+test('MCP 说参数不对时提示先看 betteroffice_tools', async () => {
+  const { reg } = harness({ failCall: '{"code":"INVALID_ARGUMENT","message":"version: expected string"}' })
+  const task = await reg.open({}, 's1', { path: 'a.docx', cwd: 'C:/d', mode: 'edit' })
+
+  await assert.rejects(
+    () => reg.call('s1', task.taskId, 'xlsx_write_range', {}),
+    /先调 betteroffice_tools 看这个工具的 inputSchema/,
+  )
+})

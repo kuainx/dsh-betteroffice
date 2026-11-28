@@ -1,4 +1,4 @@
-/** 暴露给 agent 的 6 个任务级工具。路径只在 open 时出现，其余都用任务 id。 */
+/** 暴露给 agent 的 8 个任务级工具。路径只在 open 时出现，其余都用任务 id。 */
 
 import type { ConfigData } from './config.js'
 import { DomainError } from './errors.js'
@@ -12,6 +12,7 @@ export const TOOL_NAMES = [
   'betteroffice_replace',
   'betteroffice_close',
   'betteroffice_call',
+  'betteroffice_tools',
 ] as const
 
 export type TextBlock = { type: 'text'; text: string }
@@ -39,10 +40,16 @@ function renderJson(_args: unknown, value: unknown): TextBlock[] {
   return [{ type: 'text', text: typeof value === 'string' ? value : JSON.stringify(value, null, 2) }]
 }
 
-function requiredString(args: Record<string, unknown>, key: string, label: string): string {
+function requiredString(
+  args: Record<string, unknown>,
+  key: string,
+  label: string,
+  hint?: string,
+): string {
   const value = args[key]
   if (typeof value !== 'string' || value.trim() === '') {
-    throw new DomainError('invalid-arguments', `缺少参数 ${key}（${label}）`)
+    const advice = hint === undefined ? '' : `；${hint}`
+    throw new DomainError('invalid-arguments', `缺少参数 ${key}（${label}）${advice}`)
   }
   return value
 }
@@ -207,7 +214,8 @@ export function createToolDefinitions(deps: ToolDeps): ToolDefinition[] {
     name: 'betteroffice_call',
     description:
       '把任意 BetterOffice MCP 工具转给某个任务执行——改内容都用它。' +
-      '工具名用裸名（如 docx_replace_text、xlsx_write_range、pptx_edit、office_read、xlsx_outline），' +
+      '工具名用裸名（如 docx_edit、xlsx_write_range、pptx_edit、office_read、xlsx_outline），' +
+      '不确定名字或参数就先调 betteroffice_tools 看清单与 inputSchema。' +
       '参数是与该工具一致的 JSON 对象，文档参数用 betteroffice_open 返回的 document。' +
       'office_export 与 office_files 不让直接调：写文件用 betteroffice_deliver / betteroffice_replace，找文件用 betteroffice_open。',
     parameters: {
@@ -223,13 +231,38 @@ export function createToolDefinitions(deps: ToolDeps): ToolDefinition[] {
     output: { schema: OUTPUT_SCHEMA, render: renderJson },
     async execute(args) {
       const taskId = requiredString(args, 'task', '任务 id')
-      const tool = requiredString(args, 'tool', 'MCP 工具名')
+      const tool = requiredString(
+        args,
+        'tool',
+        'MCP 工具名',
+        'tool 和 args 都要放在顶层，args 里放该工具自己的参数。',
+      )
       const input = (args['args'] ?? {}) as Record<string, unknown>
       return await deps.registry.call(deps.sessionId, taskId, tool, input)
     },
   }
 
-  return [open, list, checkpoint, deliver, replace, close, call]
+  const tools: ToolDefinition = {
+    name: 'betteroffice_tools',
+    description:
+      '列出该任务 MCP 子进程里的全部工具：名字、说明与 inputSchema（含必填字段）。' +
+      '调 betteroffice_call 之前先看它，别照文档猜工具名——真实名字以这里为准。',
+    parameters: {
+      type: 'object',
+      properties: {
+        task: { type: 'string', description: 'betteroffice_open 返回的 taskId' },
+      },
+      required: ['task'],
+      additionalProperties: false,
+    },
+    output: { schema: OUTPUT_SCHEMA, render: renderJson },
+    async execute(args) {
+      const taskId = requiredString(args, 'task', '任务 id')
+      return await deps.registry.tools(deps.sessionId, taskId)
+    },
+  }
+
+  return [open, list, checkpoint, deliver, replace, close, call, tools]
 }
 
 export function registerTools(
