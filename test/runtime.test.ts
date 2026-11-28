@@ -10,7 +10,12 @@ import {
   MIN_NODE_VERSION,
 } from '../src/runtime.js'
 
-const cfg = { workspaceMode: 'auto' as const, cleanupMode: 'auto' as const, nodePath: '', runtimeVersion: '' }
+const cfg = {
+  workspaceMode: 'auto' as const,
+  cleanupMode: 'auto' as const,
+  nodePath: '',
+  runtimeVersion: '',
+}
 const nodeExe = process.platform === 'win32' ? 'node.exe' : 'node'
 
 test('版本比较与 22.12.0 下限', () => {
@@ -33,7 +38,15 @@ test('CLI 路径按 home/版本拼接', () => {
 
 test('PATH 中找不到 node 时给出缺 Node 原因', () => {
   assert.throws(
-    () => resolveMcpRuntime({ config: cfg, home: 'C:/h', nodeVersion: '24.0.0', exists: () => false, env: { PATH: 'C:/empty' }, sep: ';' }),
+    () =>
+      resolveMcpRuntime({
+        config: cfg,
+        home: 'C:/h',
+        nodeVersion: '24.0.0',
+        exists: () => false,
+        env: { PATH: 'C:/empty' },
+        sep: ';',
+      }),
     /未找到 Node/,
   )
 })
@@ -41,7 +54,15 @@ test('PATH 中找不到 node 时给出缺 Node 原因', () => {
 test('Node 版本过低时报出版本要求', () => {
   const exists = (p: string) => p.includes(nodeExe) || p.includes('cli.js')
   assert.throws(
-    () => resolveMcpRuntime({ config: cfg, home: 'C:/h', nodeVersion: '20.0.0', exists, env: { PATH: 'C:/n' }, sep: ';' }),
+    () =>
+      resolveMcpRuntime({
+        config: cfg,
+        home: 'C:/h',
+        nodeVersion: '20.0.0',
+        exists,
+        env: { PATH: 'C:/n' },
+        sep: ';',
+      }),
     /22\.12\.0/,
   )
 })

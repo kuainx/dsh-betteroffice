@@ -23,17 +23,27 @@ test('含 .. 的路径解析到同一真实文件', async () => {
 })
 test('目录联接指向别处时拒绝', async () => {
   const base = await mkdtemp(join(tmpdir(), 'bo-'))
-  const target = join(base, 'real'); await mkdir(target)
+  const target = join(base, 'real')
+  await mkdir(target)
   await writeFile(join(target, 'a.docx'), 'x')
   await symlink(target, join(base, 'link'), 'junction')
-  await assert.rejects(() => resolveDocumentPath(join('link', 'a.docx'), base), (e: any) => e.code === 'path-redirected')
+  await assert.rejects(
+    () => resolveDocumentPath(join('link', 'a.docx'), base),
+    (e: any) => e.code === 'path-redirected',
+  )
 })
 test('不支持的后缀被拒绝', async () => {
   const base = await mkdtemp(join(tmpdir(), 'bo-'))
   await writeFile(join(base, 'a.txt'), 'x')
-  await assert.rejects(() => resolveDocumentPath('a.txt', base), (e: any) => e.code === 'unsupported-format')
+  await assert.rejects(
+    () => resolveDocumentPath('a.txt', base),
+    (e: any) => e.code === 'unsupported-format',
+  )
 })
 test('不存在给出 not-found', async () => {
   const base = await mkdtemp(join(tmpdir(), 'bo-'))
-  await assert.rejects(() => resolveDocumentPath('nope.docx', base), (e: any) => e.code === 'not-found')
+  await assert.rejects(
+    () => resolveDocumentPath('nope.docx', base),
+    (e: any) => e.code === 'not-found',
+  )
 })

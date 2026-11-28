@@ -39,7 +39,10 @@ test('关闭时释放挂载并标记任务不可再用', async () => {
   const task = await reg.open({}, 's1', { path: 'a.docx', cwd: 'C:/d' })
   await reg.close({}, 's1', task.taskId)
   assert.deepEqual(disposed, ['bo_a71c2e90'])
-  assert.throws(() => reg.get('s1', task.taskId), (error: never) => (error as { code?: string }).code === 'task-not-found')
+  assert.throws(
+    () => reg.get('s1', task.taskId),
+    (error: never) => (error as { code?: string }).code === 'task-not-found',
+  )
 })
 
 test('透传调用直接落到该任务的连接上', async () => {
@@ -62,7 +65,10 @@ test('透传也不许绕过守卫去导出或列目录', async () => {
 test('别的会话用同一 taskId 被拒', async () => {
   const { reg } = harness()
   const task = await reg.open({}, 's1', { path: 'a.docx', cwd: 'C:/d' })
-  assert.throws(() => reg.get('s2', task.taskId), (error: never) => (error as { code?: string }).code === 'task-foreign')
+  assert.throws(
+    () => reg.get('s2', task.taskId),
+    (error: never) => (error as { code?: string }).code === 'task-foreign',
+  )
 })
 
 test('MCP 启动失败时不留下任务记录', async () => {
@@ -125,7 +131,14 @@ test('检查点落在工作文件夹 checkpoints/ 下并写进台账', async () 
   const source = await mkdtemp(join(tmpdir(), 'bo-cp-'))
   const docPath = join(source, 'a.docx')
   await writeFile(docPath, 'source-bytes')
-  const { reg } = harness({ config: () => ({ workspaceMode: 'always', cleanupMode: 'off', nodePath: '', runtimeVersion: '0.4.0' }) })
+  const { reg } = harness({
+    config: () => ({
+      workspaceMode: 'always',
+      cleanupMode: 'off',
+      nodePath: '',
+      runtimeVersion: '0.4.0',
+    }),
+  })
   const task = await reg.open({}, 's1', { path: 'a.docx', cwd: source, mode: 'edit' })
   const saved = await reg.checkpoint('s1', task.taskId)
 
@@ -136,7 +149,10 @@ test('检查点落在工作文件夹 checkpoints/ 下并写进台账', async () 
   assert.equal(saved.sha256, await sha256File(saved.path))
 
   const ledger = await readLedger(task.workspaceDir)
-  assert.deepEqual(ledger.checkpoints?.map((cp) => cp.name), [saved.name])
+  assert.deepEqual(
+    ledger.checkpoints?.map((cp) => cp.name),
+    [saved.name],
+  )
 })
 
 test('替换原文件前必须有 confirm，否则不导出也不动原件', async () => {
@@ -159,7 +175,13 @@ test('confirm 为 true 时先导出草稿到中转目录再交给替换事务', 
     replaceFile: async (input, deps) => {
       const bag = deps as { home: string; recycle: unknown }
       replaced.push({ input, home: bag.home, hasRecycle: typeof bag.recycle === 'function' })
-      return { path: 'C:/d/a.docx', sha256: 'sha256:new', bytes: 14, recycled: true as const, backupPath: 'C:/h/b.docx' }
+      return {
+        path: 'C:/d/a.docx',
+        sha256: 'sha256:new',
+        bytes: 14,
+        recycled: true as const,
+        backupPath: 'C:/h/b.docx',
+      }
     },
   })
   const task = await reg.open({}, 's1', { path: 'a.docx', cwd: 'C:/d', mode: 'edit' })
@@ -170,17 +192,25 @@ test('confirm 为 true 时先导出草稿到中转目录再交给替换事务', 
     name: 'office_export',
     args: { document: 'doc1', path: '.deliver/a.docx' },
   })
-  assert.deepEqual(replaced.map((item) => item.input), [
-    {
-      taskId: task.taskId,
-      sourcePath: 'C:/d/a.docx',
-      candidatePath: staging,
-      expectedSourceSha256: 'sha256:x',
-    },
-  ])
+  assert.deepEqual(
+    replaced.map((item) => item.input),
+    [
+      {
+        taskId: task.taskId,
+        sourcePath: 'C:/d/a.docx',
+        candidatePath: staging,
+        expectedSourceSha256: 'sha256:x',
+      },
+    ],
+  )
   assert.equal(replaced[0]?.home, root)
   assert.equal(replaced[0]?.hasRecycle, true)
-  assert.deepEqual(outcome, { taskId: task.taskId, path: 'C:/d/a.docx', sha256: 'sha256:new', bytes: 14 })
+  assert.deepEqual(outcome, {
+    taskId: task.taskId,
+    path: 'C:/d/a.docx',
+    sha256: 'sha256:new',
+    bytes: 14,
+  })
   assert.equal(existsSync(join(root, '.deliver')), false)
 })
 
@@ -210,8 +240,13 @@ test('临时目录编辑的检查点落在临时目录 checkpoints/ 下且不记
 test('关闭任务时把清理设置与 discard 交给清理逻辑，且只在有工作文件夹时调用', async () => {
   const calls: unknown[] = []
   const { reg } = harness({
-    config: () => ({ workspaceMode: 'always', cleanupMode: 'on', nodePath: '', runtimeVersion: '' }),
-    cleanupWorkspace: async opts => {
+    config: () => ({
+      workspaceMode: 'always',
+      cleanupMode: 'on',
+      nodePath: '',
+      runtimeVersion: '',
+    }),
+    cleanupWorkspace: async (opts) => {
       calls.push(opts)
       return { remove: true, reason: '测试' }
     },
@@ -230,7 +265,7 @@ test('编辑但不建工作文件夹时关闭任务不触发清理', async () =>
   const calls: unknown[] = []
   const { reg } = harness({
     makeTempDir: async () => mkdtemp(join(tmpdir(), 'bo-noclean-')),
-    cleanupWorkspace: async opts => {
+    cleanupWorkspace: async (opts) => {
       calls.push(opts)
       return { remove: true, reason: '测试' }
     },
@@ -258,7 +293,9 @@ test('任务 id 不存在时提示去 betteroffice_open 拿 id', async () => {
 })
 
 test('MCP 说参数不对时提示先看 betteroffice_tools', async () => {
-  const { reg } = harness({ failCall: '{"code":"INVALID_ARGUMENT","message":"version: expected string"}' })
+  const { reg } = harness({
+    failCall: '{"code":"INVALID_ARGUMENT","message":"version: expected string"}',
+  })
   const task = await reg.open({}, 's1', { path: 'a.docx', cwd: 'C:/d', mode: 'edit' })
 
   await assert.rejects(

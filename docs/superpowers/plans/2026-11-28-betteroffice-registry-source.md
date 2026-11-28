@@ -32,12 +32,14 @@
 ### Task 1: 源在安装与查询两条路上都生效
 
 **Files:**
+
 - Modify: `src/registry.ts`
 - Modify: `src/npm-runtime.ts`
 - Modify: `src/installer.ts`
 - Test: `test/registry.test.ts`、`test/npm-runtime.test.ts`、`test/installer.test.ts`
 
 **Interfaces:**
+
 - Produces: `REGISTRY_PRESETS: { npmjs: string; npmmirror: string }`、`isRegistryUrl(value: string): boolean`、`packageUrl(registry: string): string`、`fetchLatestVersion(options: { registry?: string; fetch?: RegistryFetch; timeoutMs?: number } = {})`、`npmInstallArgs(options: { prefix: string; version: string; cacheDir: string; registry?: string }): string[]`、`InstallerDeps.registry?(): string`。
 
 - [ ] 写失败测试：`packageUrl('https://registry.npmmirror.com/')` 得到 `https://registry.npmmirror.com/@betteroffice/agents`；`isRegistryUrl` 拒 `javascript:alert(1)`、`//host/x`、`registry.npmjs.org`；`fetchLatestVersion({ registry })` 打的是自定义源；`npmInstallArgs` 带 registry 时多出 `--registry` 两项。
@@ -49,10 +51,12 @@
 ### Task 2: 源存进设置并贯通路由
 
 **Files:**
+
 - Modify: `src/store.ts`、`src/control.ts`、`src/routes.ts`、`src/index.ts`
 - Test: `test/store.test.ts`、`test/control.test.ts`、`test/routes.test.ts`
 
 **Interfaces:**
+
 - Consumes: Task 1 的 `REGISTRY_PRESETS`、`isRegistryUrl`、`fetchLatestVersion({ registry })`。
 - Produces: `StoredSettings.registry: string`；`StatusSnapshot.settings = { workspaceMode; cleanupMode; registry }`；`ControlAction` 的 `settings` 请求带 `registry`；`ControlDeps.saveSettings(patch: { workspaceMode: string; cleanupMode: string; registry: string })`。
 
@@ -65,6 +69,7 @@
 ### Task 3: 卡片上的第四行 + 文档
 
 **Files:**
+
 - Modify: `client.js`、`README.md`
 - 验证：`node --check client.js`、`.scratch/client-sim.mjs`、`npm pack --dry-run`
 

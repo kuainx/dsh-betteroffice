@@ -128,7 +128,9 @@ window.__ModuleLoader__.load({
             !Array.isArray(body.messages) ||
             !Array.isArray(body.inFlight)
           ) {
-            throw new Error(body && body.error ? body.error : '宿主返回的状态不是配置卡片认识的格式，请把 DSH 升到 0.2.0-rc.1 以上。')
+            throw new Error(
+              body && body.error ? body.error : '宿主返回的状态不是配置卡片认识的格式，请把 DSH 升到 0.2.0-rc.1 以上。',
+            )
           }
           setSnap(body)
         } catch (error) {
@@ -169,7 +171,10 @@ window.__ModuleLoader__.load({
           if (body.ok === true) {
             setResult({ kind: 'ok', text: body.text || '完成。' })
           } else {
-            setResult({ kind: 'error', text: body.error || `操作失败（HTTP ${response.status}），稍后再试。` })
+            setResult({
+              kind: 'error',
+              text: body.error || `操作失败（HTTP ${response.status}），稍后再试。`,
+            })
           }
         } catch (error) {
           setResult({ kind: 'error', text: readable(error) })
@@ -186,21 +191,32 @@ window.__ModuleLoader__.load({
       const sourceChoice = REGISTRY_PRESETS.some((preset) => preset.value === storedRegistry) ? storedRegistry : ''
 
       function button(action, label, variant) {
-        return h(ActButton, { key: action, variant, disabled, onClick: () => void run(action) }, busy === action ? `${label}…` : label)
+        return h(
+          ActButton,
+          { key: action, variant, disabled, onClick: () => void run(action) },
+          busy === action ? `${label}…` : label,
+        )
       }
 
       const rows = []
       if (snap !== null) {
         rows.push(
           h(Label, { key: 'node-label' }, `Node ${snap.node.version}`),
-          h(Value, { key: 'node-value', ok: snap.node.ok }, snap.node.ok ? `满足（需要 ≥${snap.node.required}）` : `不满足：需要 ≥${snap.node.required}`),
+          h(
+            Value,
+            { key: 'node-value', ok: snap.node.ok },
+            snap.node.ok ? `满足（需要 ≥${snap.node.required}）` : `不满足：需要 ≥${snap.node.required}`,
+          ),
           h(Label, { key: 'current-label' }, '当前运行时'),
           h(Value, { key: 'current-value' }, snap.runtime.configured === '' ? '未选择' : snap.runtime.configured),
           h(Label, { key: 'installed-label' }, '已装版本'),
           h(Value, { key: 'installed-value' }, versions.length === 0 ? '（还没装任何版本）' : versions.join(' / ')),
         )
         if (installing) {
-          rows.push(h(Label, { key: 'inflight-label' }, '安装中'), h(Value, { key: 'inflight-value' }, `${inFlight.join(' / ')}…`))
+          rows.push(
+            h(Label, { key: 'inflight-label' }, '安装中'),
+            h(Value, { key: 'inflight-value' }, `${inFlight.join(' / ')}…`),
+          )
         }
         if (snap.latest !== null) {
           rows.push(h(Label, { key: 'latest-label' }, 'registry 最新'), h(Value, { key: 'latest-value' }, snap.latest))
@@ -214,7 +230,9 @@ window.__ModuleLoader__.load({
         snap === null
           ? h('div', { className: 'bo_note' }, '正在读取状态…')
           : h('div', { className: 'bo_rows' }, ...rows),
-        ...(snap === null ? [] : snap.messages.map((text, index) => h('div', { key: `message-${index}`, className: 'bo_note' }, text))),
+        ...(snap === null
+          ? []
+          : snap.messages.map((text, index) => h('div', { key: `message-${index}`, className: 'bo_note' }, text))),
         ...(snap === null
           ? []
           : [
@@ -229,7 +247,10 @@ window.__ModuleLoader__.load({
                     value: snap.settings.workspaceMode,
                     disabled: busy !== '',
                     onChange: (event) =>
-                      void run('settings', { workspaceMode: event.target.value, cleanupMode: snap.settings.cleanupMode }),
+                      void run('settings', {
+                        workspaceMode: event.target.value,
+                        cleanupMode: snap.settings.cleanupMode,
+                      }),
                   },
                   h('option', { value: 'auto' }, '由 agent 决定'),
                   h('option', { value: 'never' }, '不使用'),
@@ -243,7 +264,10 @@ window.__ModuleLoader__.load({
                     value: snap.settings.cleanupMode,
                     disabled: busy !== '',
                     onChange: (event) =>
-                      void run('settings', { workspaceMode: snap.settings.workspaceMode, cleanupMode: event.target.value }),
+                      void run('settings', {
+                        workspaceMode: snap.settings.workspaceMode,
+                        cleanupMode: event.target.value,
+                      }),
                   },
                   h('option', { value: 'off' }, '不删除'),
                   h('option', { value: 'auto' }, '自动删除'),
@@ -264,7 +288,9 @@ window.__ModuleLoader__.load({
                         registry: event.target.value,
                       }),
                   },
-                  REGISTRY_PRESETS.map((preset) => h('option', { key: preset.value || 'default', value: preset.value }, preset.label)),
+                  REGISTRY_PRESETS.map((preset) =>
+                    h('option', { key: preset.value || 'default', value: preset.value }, preset.label),
+                  ),
                 ),
               ),
             ]),

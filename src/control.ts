@@ -80,7 +80,12 @@ function parseRegistry(value: unknown): string {
 export function parseAction(raw: unknown): ActionRequest {
   const body =
     typeof raw === 'object' && raw !== null
-      ? (raw as { action?: unknown; version?: unknown; workspaceMode?: unknown; cleanupMode?: unknown })
+      ? (raw as {
+          action?: unknown
+          version?: unknown
+          workspaceMode?: unknown
+          cleanupMode?: unknown
+        })
       : {}
   const action = body.action
   if (typeof action !== 'string' || !(ACTIONS as readonly string[]).includes(action)) {
@@ -133,7 +138,11 @@ export function buildStatus(input: StatusInput): StatusSnapshot {
   return {
     node: { version: nodeVersion, ok: nodeOk, required: MIN_NODE_VERSION },
     runtime: { configured, installed: [...installed], cliReady },
-    settings: { workspaceMode: config.workspaceMode, cleanupMode: config.cleanupMode, registry: input.registry ?? '' },
+    settings: {
+      workspaceMode: config.workspaceMode,
+      cleanupMode: config.cleanupMode,
+      registry: input.registry ?? '',
+    },
     latest: input.latest ?? null,
     inFlight: [...(input.inFlight ?? [])],
     messages,

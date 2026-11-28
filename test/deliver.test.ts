@@ -23,10 +23,7 @@ test('同名文件已存在时依次加序号，绝不覆盖', () => {
 })
 
 test('失败时给出可行动的错误', async () => {
-  assert.throws(
-    () => pickDeliveryTarget('C:/out', 'a.docx', () => true),
-    /同名文件太多/,
-  )
+  assert.throws(() => pickDeliveryTarget('C:/out', 'a.docx', () => true), /同名文件太多/)
 })
 
 test('交付把草稿另存到目标目录并清掉中转文件', async () => {
@@ -63,11 +60,19 @@ test('交付成功后写进工作文件夹台账', async () => {
   const source = await mkdtemp(join(tmpdir(), 'bo-dl-'))
   await writeFile(join(source, 'a.docx'), 'source-bytes')
   const { reg } = harness({
-    config: () => ({ workspaceMode: 'always', cleanupMode: 'off', nodePath: '', runtimeVersion: '0.4.0' }),
+    config: () => ({
+      workspaceMode: 'always',
+      cleanupMode: 'off',
+      nodePath: '',
+      runtimeVersion: '0.4.0',
+    }),
   })
   const task = await reg.open({}, 's1', { path: 'a.docx', cwd: source, mode: 'edit' })
   const outDir = join(source, 'out')
   const delivered = await reg.deliver('s1', task.taskId, { dir: outDir })
   const ledger = await readLedger(task.workspaceDir as string)
-  assert.deepEqual(ledger.deliveries?.map((item) => item.path), [delivered.path])
+  assert.deepEqual(
+    ledger.deliveries?.map((item) => item.path),
+    [delivered.path],
+  )
 })

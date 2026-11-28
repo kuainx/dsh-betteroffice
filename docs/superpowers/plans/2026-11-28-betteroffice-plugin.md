@@ -44,34 +44,36 @@
 
 ## File Structure
 
-| 文件 | 职责 |
-| --- | --- |
-| `package.json` | 包元数据、DSH bundle 清单、脚本、peer/dev 依赖 |
-| `tsconfig.json` | 单一编译配置（源码 + 测试一起编到 `lib/`） |
-| `cordis.patch.yml` | DSH bundle 的插件行注册 |
-| `.gitignore` | `node_modules/`、`lib/`、`.scratch/`、`.acl-recovery/` |
-| `src/index.ts` | 插件入口：`name`/`inject`/`Config`/`apply`，agent 生命周期装配 |
-| `src/config.ts` | Config schema（volatile 字段）与默认值归一化 |
-| `src/errors.ts` | 领域错误类型与中文消息（`task-not-found`、`source-changed`、`mcp-unavailable` 等） |
-| `src/paths.ts` | 路径规范化、真实路径与身份校验、sha256、扩展名白名单 |
-| `src/workspace.ts` | 工作文件夹命名器、独占创建、台账读写 |
-| `src/root.ts` | root 决策矩阵（只读/编辑 × 工作文件夹三档） |
-| `src/mount.ts` | `dsh-mcp-client` 按 scope 挂载的封装（懒加载、幂等、释放） |
-| `src/runtime.ts` | Node 与 `betteroffice-mcp` CLI 定位（阶段 1 只做只读探测） |
-| `src/tasks.ts` | 任务注册表：会话绑定、open/close/list |
-| `src/tools.ts` | 5 个 `betteroffice_*` 工具定义与处理函数 |
-| `test/*.test.ts` | 与源码同名的单测 |
+| 文件               | 职责                                                                               |
+| ------------------ | ---------------------------------------------------------------------------------- |
+| `package.json`     | 包元数据、DSH bundle 清单、脚本、peer/dev 依赖                                     |
+| `tsconfig.json`    | 单一编译配置（源码 + 测试一起编到 `lib/`）                                         |
+| `cordis.patch.yml` | DSH bundle 的插件行注册                                                            |
+| `.gitignore`       | `node_modules/`、`lib/`、`.scratch/`、`.acl-recovery/`                             |
+| `src/index.ts`     | 插件入口：`name`/`inject`/`Config`/`apply`，agent 生命周期装配                     |
+| `src/config.ts`    | Config schema（volatile 字段）与默认值归一化                                       |
+| `src/errors.ts`    | 领域错误类型与中文消息（`task-not-found`、`source-changed`、`mcp-unavailable` 等） |
+| `src/paths.ts`     | 路径规范化、真实路径与身份校验、sha256、扩展名白名单                               |
+| `src/workspace.ts` | 工作文件夹命名器、独占创建、台账读写                                               |
+| `src/root.ts`      | root 决策矩阵（只读/编辑 × 工作文件夹三档）                                        |
+| `src/mount.ts`     | `dsh-mcp-client` 按 scope 挂载的封装（懒加载、幂等、释放）                         |
+| `src/runtime.ts`   | Node 与 `betteroffice-mcp` CLI 定位（阶段 1 只做只读探测）                         |
+| `src/tasks.ts`     | 任务注册表：会话绑定、open/close/list                                              |
+| `src/tools.ts`     | 5 个 `betteroffice_*` 工具定义与处理函数                                           |
+| `test/*.test.ts`   | 与源码同名的单测                                                                   |
 
 ---
 
 ### Task 1: 脚手架与可加载的插件骨架
 
 **Files:**
+
 - Create: `package.json`, `tsconfig.json`, `cordis.patch.yml`, `.gitignore`
 - Create: `src/index.ts`, `src/config.ts`
 - Test: `test/smoke.test.ts`
 
 **Interfaces:**
+
 - Produces: 包名 `dsh-betteroffice`；`src/index.ts` 导出 `name: string`、`inject: string[]`、`Config`、`apply(ctx, config?)`；`src/config.ts` 导出 `Config`（schemastery schema）与 `type ConfigData = { workspaceMode: 'auto'|'never'|'always'; cleanupMode: 'off'|'auto'|'on'; nodePath: string; runtimeVersion: string }`。
 
 - [ ] **Step 1: 写 `package.json`**
@@ -137,14 +139,25 @@ Expected: FAIL，`error TS2307: Cannot find module '../src/index.js'`（文件�
 import z from '@deepseek-ai/schemastery'
 
 export const Config = z.object({
-  workspaceMode: z.union([z.const('auto'), z.const('never'), z.const('always')]).default('auto').volatile()
+  workspaceMode: z
+    .union([z.const('auto'), z.const('never'), z.const('always')])
+    .default('auto')
+    .volatile()
     .description('是否使用工作文件夹：自动（由 agent 决定）/ 不使用 / 强制使用'),
-  cleanupMode: z.union([z.const('off'), z.const('auto'), z.const('on')]).default('auto').volatile()
+  cleanupMode: z
+    .union([z.const('off'), z.const('auto'), z.const('on')])
+    .default('auto')
+    .volatile()
     .description('工作完成后删除工作文件夹：禁用 / 自动 / 开启'),
   nodePath: z.string().default('').volatile().description('Node.js 可执行文件路径（留空自动检测，需 ≥22.12.0）'),
   runtimeVersion: z.string().default('').volatile().description('要使用的 betteroffice-mcp 私有版本（留空用默认）'),
 })
-export type ConfigData = { workspaceMode: 'auto'|'never'|'always'; cleanupMode: 'off'|'auto'|'on'; nodePath: string; runtimeVersion: string }
+export type ConfigData = {
+  workspaceMode: 'auto' | 'never' | 'always'
+  cleanupMode: 'off' | 'auto' | 'on'
+  nodePath: string
+  runtimeVersion: string
+}
 ```
 
 `src/index.ts`：
@@ -181,10 +194,12 @@ git commit -m "chore: 脚手架与可加载的插件骨架"
 ### Task 2: 配置默认值与归一化
 
 **Files:**
+
 - Modify: `src/config.ts`
 - Test: `test/config.test.ts`
 
 **Interfaces:**
+
 - Consumes: Task 1 的 `Config`。
 - Produces: `resolveConfig(raw: unknown): ConfigData` —— 解析 senschema 默认值并收窄类型；对非法值抛 `TypeError`（消息中文）。
 
@@ -196,7 +211,12 @@ import assert from 'node:assert/strict'
 import { resolveConfig } from '../src/config.js'
 
 test('空配置得到默认值', () => {
-  assert.deepEqual(resolveConfig(undefined), { workspaceMode: 'auto', cleanupMode: 'auto', nodePath: '', runtimeVersion: '' })
+  assert.deepEqual(resolveConfig(undefined), {
+    workspaceMode: 'auto',
+    cleanupMode: 'auto',
+    nodePath: '',
+    runtimeVersion: '',
+  })
 })
 test('非法枚举值被拒绝', () => {
   assert.throws(() => resolveConfig({ workspaceMode: 'yes' }), /workspaceMode/)
@@ -232,10 +252,12 @@ git commit -m "feat: 配置默认值与归一化"
 ### Task 3: 工作文件夹命名器
 
 **Files:**
+
 - Create: `src/workspace.ts`
 - Test: `test/workspace-name.test.ts`
 
 **Interfaces:**
+
 - Produces: `formatStamp(at: Date): string`（`YYMMDD-HHmmss`，本地时间）；`workspaceDirName(sourceFileName: string, taskId: string, at: Date): string`；常量 `WORKSPACE_PREFIX = 'dsh-'`、`MAX_NAME_BYTES = 200`。
 
 - [ ] **Step 1: 写失败测试**（覆盖 Review Focus 1 的命名一半与中文/超长/非法字符）
@@ -297,11 +319,13 @@ git commit -m "feat: 工作文件夹命名器"
 ### Task 4: 独占创建工作文件夹与台账
 
 **Files:**
+
 - Modify: `src/workspace.ts`
 - Create: `src/errors.ts`
 - Test: `test/workspace-create.test.ts`
 
 **Interfaces:**
+
 - Consumes: Task 3 的 `workspaceDirName`。
 - Produces: `type TaskLedger = { taskId: string; sessionId: string; sourcePath: string; sourceHash: string; mode: 'read'|'edit'; rootKind: 'parent'|'temp'|'workspace'; workspaceDir: string | null; createdAt: string; status: 'open'|'closed'; mcpVersion: string }`；`createWorkspace(opts: { sourcePath: string; taskId: string; at: Date; ledger: TaskLedger }): Promise<{ dir: string; draftDir: string; checkpointsDir: string; ledgerPath: string }>`；`readLedger(dir: string): Promise<TaskLedger>`；错误类 `WorkspaceExistsError`（`code: 'workspace-exists'`）。
 
@@ -316,27 +340,52 @@ import { join } from 'node:path'
 import { createWorkspace, readLedger } from '../src/workspace.js'
 
 const ledger = (taskId: string, sourcePath: string) => ({
-  taskId, sessionId: 's1', sourcePath, sourceHash: 'sha256:x', mode: 'edit' as const,
-  rootKind: 'workspace' as const, workspaceDir: null, createdAt: '2026-11-27T14:41:26.000Z',
-  status: 'open' as const, mcpVersion: '0.4.0',
+  taskId,
+  sessionId: 's1',
+  sourcePath,
+  sourceHash: 'sha256:x',
+  mode: 'edit' as const,
+  rootKind: 'workspace' as const,
+  workspaceDir: null,
+  createdAt: '2026-11-27T14:41:26.000Z',
+  status: 'open' as const,
+  mcpVersion: '0.4.0',
 })
 
 test('创建 draft/ 与 checkpoints/ 并写入可回读的台账', async () => {
   const base = await mkdtemp(join(tmpdir(), 'bo-'))
-  const source = join(base, '报告.docx'); await writeFile(source, 'x')
+  const source = join(base, '报告.docx')
+  await writeFile(source, 'x')
   const dir = join(base, 'dsh-报告.docx-261127-144126-a71c2e90')
-  const ws = await createWorkspace({ sourcePath: source, taskId: 'a71c2e90', at: new Date(2026,10,27,14,41,26), ledger: ledger('a71c2e90', source) })
+  const ws = await createWorkspace({
+    sourcePath: source,
+    taskId: 'a71c2e90',
+    at: new Date(2026, 10, 27, 14, 41, 26),
+    ledger: ledger('a71c2e90', source),
+  })
   assert.equal(ws.dir, dir)
   assert.equal((await readLedger(ws.dir)).taskId, 'a71c2e90')
 })
 
 test('同名目录已存在时失败而不接管', async () => {
   const base = await mkdtemp(join(tmpdir(), 'bo-'))
-  const source = join(base, '报告.docx'); await writeFile(source, 'x')
+  const source = join(base, '报告.docx')
+  await writeFile(source, 'x')
   const dir = join(base, 'dsh-报告.docx-261127-144126-a71c2e90')
-  await createWorkspace({ sourcePath: source, taskId: 'a71c2e90', at: new Date(2026,10,27,14,41,26), ledger: ledger('a71c2e90', source) })
+  await createWorkspace({
+    sourcePath: source,
+    taskId: 'a71c2e90',
+    at: new Date(2026, 10, 27, 14, 41, 26),
+    ledger: ledger('a71c2e90', source),
+  })
   await assert.rejects(
-    () => createWorkspace({ sourcePath: source, taskId: 'a71c2e90', at: new Date(2026,10,27,14,41,26), ledger: ledger('a71c2e90', source) }),
+    () =>
+      createWorkspace({
+        sourcePath: source,
+        taskId: 'a71c2e90',
+        at: new Date(2026, 10, 27, 14, 41, 26),
+        ledger: ledger('a71c2e90', source),
+      }),
     (e: any) => e.code === 'workspace-exists',
   )
 })
@@ -368,11 +417,13 @@ git commit -m "feat: 工作文件夹独占创建与台账"
 ### Task 5: 路径解析与身份校验
 
 **Files:**
+
 - Create: `src/paths.ts`
 - Modify: `src/errors.ts`
 - Test: `test/paths.test.ts`
 
 **Interfaces:**
+
 - Consumes: `DomainError`。
 - Produces: `type ResolvedDoc = { absPath: string; realPath: string; dir: string; name: string; ext: '.docx'|'.xlsx'|'.pptx'; size: number; sha256: string }`；`resolveDocumentPath(input: string, cwd: string): Promise<ResolvedDoc>`；`sha256File(path: string): Promise<string>`；错误 `code: 'not-found' | 'unsupported-format' | 'path-redirected' | 'not-a-file'`。
 
@@ -404,19 +455,29 @@ test('含 .. 的路径解析到同一真实文件', async () => {
 })
 test('目录联接指向别处时拒绝', async () => {
   const base = await mkdtemp(join(tmpdir(), 'bo-'))
-  const target = join(base, 'real'); await mkdir(target)
+  const target = join(base, 'real')
+  await mkdir(target)
   await writeFile(join(target, 'a.docx'), 'x')
   await symlink(target, join(base, 'link'), 'junction')
-  await assert.rejects(() => resolveDocumentPath(join('link', 'a.docx'), base), (e: any) => e.code === 'path-redirected')
+  await assert.rejects(
+    () => resolveDocumentPath(join('link', 'a.docx'), base),
+    (e: any) => e.code === 'path-redirected',
+  )
 })
 test('不支持的后缀被拒绝', async () => {
   const base = await mkdtemp(join(tmpdir(), 'bo-'))
   await writeFile(join(base, 'a.txt'), 'x')
-  await assert.rejects(() => resolveDocumentPath('a.txt', base), (e: any) => e.code === 'unsupported-format')
+  await assert.rejects(
+    () => resolveDocumentPath('a.txt', base),
+    (e: any) => e.code === 'unsupported-format',
+  )
 })
 test('不存在给出 not-found', async () => {
   const base = await mkdtemp(join(tmpdir(), 'bo-'))
-  await assert.rejects(() => resolveDocumentPath('nope.docx', base), (e: any) => e.code === 'not-found')
+  await assert.rejects(
+    () => resolveDocumentPath('nope.docx', base),
+    (e: any) => e.code === 'not-found',
+  )
 })
 ```
 
@@ -446,10 +507,12 @@ git commit -m "feat: 路径解析与身份校验"
 ### Task 6: root 决策矩阵
 
 **Files:**
+
 - Create: `src/root.ts`
 - Test: `test/root.test.ts`
 
 **Interfaces:**
+
 - Consumes: `ResolvedDoc`（Task 5）、`ConfigData`（Task 2）。
 - Produces: `type RootPlan = { root: string; readOnly: boolean; args: string[]; allowedTools?: string[]; rootKind: 'parent'|'temp'|'workspace' }`；`READONLY_EXCLUDED_TOOLS: string[]`（`['office_files']`）；`planRoot(input: { doc: ResolvedDoc; mode: 'read'|'edit'; config: ConfigData; tempDir: string; workspaceDir: string | null; workspaceRequested?: boolean }): RootPlan`。
 
@@ -460,8 +523,21 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { planRoot, READONLY_EXCLUDED_TOOLS } from '../src/root.js'
 
-const doc = { absPath: 'C:/d/a.docx', realPath: 'C:/d/a.docx', dir: 'C:/d', name: 'a.docx', ext: '.docx' as const, size: 1, sha256: 'x' }
-const cfg = { workspaceMode: 'auto' as const, cleanupMode: 'auto' as const, nodePath: '', runtimeVersion: '' }
+const doc = {
+  absPath: 'C:/d/a.docx',
+  realPath: 'C:/d/a.docx',
+  dir: 'C:/d',
+  name: 'a.docx',
+  ext: '.docx' as const,
+  size: 1,
+  sha256: 'x',
+}
+const cfg = {
+  workspaceMode: 'auto' as const,
+  cleanupMode: 'auto' as const,
+  nodePath: '',
+  runtimeVersion: '',
+}
 const base = { doc, config: cfg, tempDir: 'C:/tmp/bo-1', workspaceDir: null }
 
 test('只读用父目录并带 --read-only', () => {
@@ -469,7 +545,10 @@ test('只读用父目录并带 --read-only', () => {
   assert.equal(p.root, 'C:/d')
   assert.equal(p.readOnly, true)
   assert.deepEqual(p.args, ['--root', 'C:/d', '--read-only'])
-  assert.deepEqual(p.allowedTools, READONLY_EXCLUDED_TOOLS.filter(t => t !== 'office_files'))
+  assert.deepEqual(
+    p.allowedTools,
+    READONLY_EXCLUDED_TOOLS.filter((t) => t !== 'office_files'),
+  )
 })
 test('编辑且不使用工作文件夹用临时目录', () => {
   const p = planRoot({ ...base, mode: 'edit', config: { ...cfg, workspaceMode: 'never' } })
@@ -481,7 +560,12 @@ test('编辑且强制使用工作文件夹必须有工作文件夹', () => {
   assert.throws(() => planRoot({ ...base, mode: 'edit', config: { ...cfg, workspaceMode: 'always' } }), /工作文件夹/)
 })
 test('自动模式下 agent 要求工作文件夹即使用', () => {
-  const p = planRoot({ ...base, mode: 'edit', workspaceDir: 'C:/d/dsh-a.docx-1-x', workspaceRequested: true })
+  const p = planRoot({
+    ...base,
+    mode: 'edit',
+    workspaceDir: 'C:/d/dsh-a.docx-1-x',
+    workspaceRequested: true,
+  })
   assert.equal(p.rootKind, 'workspace')
   assert.equal(p.root, 'C:/d/dsh-a.docx-1-x')
 })
@@ -513,11 +597,13 @@ git commit -m "feat: root 决策矩阵"
 ### Task 7: MCP 挂载器
 
 **Files:**
+
 - Create: `src/mount.ts`
 - Modify: `src/errors.ts`
 - Test: `test/mount.test.ts`
 
 **Interfaces:**
+
 - Consumes: `DomainError`。
 - Produces: `type MountSpec = { serverName: string; command: string; args: string[]; cwd: string }`；`type MountHandle = { serverName: string; dispose(): Promise<void> }`；`createMounter(deps: { loadClient: () => Promise<McpClientModule | undefined>; logger?: (msg: string, err?: unknown) => void }): { mount(scope: unknown, spec: MountSpec): Promise<MountHandle>; has(scope: unknown, serverName: string): boolean }`；`type McpClientModule = { apply: unknown }`；错误 `code: 'mcp-unavailable' | 'mcp-start-failed'`。
 
@@ -530,14 +616,31 @@ import { createMounter, type McpClientModule } from '../src/mount.js'
 
 function fakeScope() {
   const calls: any[] = []
-  return { calls, plugin(mod: any, cfg: any) { calls.push({ mod, cfg }); let disposed = false; return { dispose: async () => { disposed = true; calls.push({ disposed: true }) } } } }
+  return {
+    calls,
+    plugin(mod: any, cfg: any) {
+      calls.push({ mod, cfg })
+      let disposed = false
+      return {
+        dispose: async () => {
+          disposed = true
+          calls.push({ disposed: true })
+        },
+      }
+    },
+  }
 }
 const fakeClient: McpClientModule = { apply() {} }
 
 test('挂载传入正确的 dsh-mcp-client 配置', async () => {
   const scope = fakeScope()
   const mounter = createMounter({ loadClient: async () => fakeClient })
-  await mounter.mount(scope, { serverName: 'bo_a71c2e90', command: 'node', args: ['cli.js', '--root', 'C:/d'], cwd: 'C:/d' })
+  await mounter.mount(scope, {
+    serverName: 'bo_a71c2e90',
+    command: 'node',
+    args: ['cli.js', '--root', 'C:/d'],
+    cwd: 'C:/d',
+  })
   assert.equal(scope.calls[0].cfg.serverName, 'bo_a71c2e90')
   assert.equal(scope.calls[0].cfg.transport, 'stdio')
   assert.equal(scope.calls[0].cfg.failOnStartupError, true)
@@ -547,7 +650,7 @@ test('同一 scope 同名重复挂载只挂一次', async () => {
   const mounter = createMounter({ loadClient: async () => fakeClient })
   await mounter.mount(scope, { serverName: 's1', command: 'node', args: [], cwd: 'C:/d' })
   await mounter.mount(scope, { serverName: 's1', command: 'node', args: [], cwd: 'C:/d' })
-  assert.equal(scope.calls.filter(c => c.cfg).length, 1)
+  assert.equal(scope.calls.filter((c) => c.cfg).length, 1)
 })
 test('dispose 释放 fiber 且 has 变为 false', async () => {
   const scope = fakeScope()
@@ -555,18 +658,32 @@ test('dispose 释放 fiber 且 has 变为 false', async () => {
   const h = await mounter.mount(scope, { serverName: 's1', command: 'node', args: [], cwd: 'C:/d' })
   await h.dispose()
   assert.equal(mounter.has(scope, 's1'), false)
-  assert.ok(scope.calls.some(c => c.disposed))
+  assert.ok(scope.calls.some((c) => c.disposed))
 })
 test('客户端不可用时给出 mcp-unavailable', async () => {
   const mounter = createMounter({ loadClient: async () => undefined })
-  await assert.rejects(() => mounter.mount(fakeScope(), { serverName: 's1', command: 'node', args: [], cwd: 'C:/d' }), (e: any) => e.code === 'mcp-unavailable')
+  await assert.rejects(
+    () => mounter.mount(fakeScope(), { serverName: 's1', command: 'node', args: [], cwd: 'C:/d' }),
+    (e: any) => e.code === 'mcp-unavailable',
+  )
 })
 test('启动异常转为 mcp-start-failed 且已 dispose', async () => {
   const scope = fakeScope()
   const mounter = createMounter({ loadClient: async () => ({ apply() {} }) })
-  scope.plugin = (mod: any, cfg: any) => { scope.calls.push({ mod, cfg }); return { dispose: async () => { scope.calls.push({ disposed: true }); throw new Error('boom') } } }
-  await assert.rejects(() => mounter.mount(scope, { serverName: 's1', command: 'node', args: [], cwd: 'C:/d' }), (e: any) => e.code === 'mcp-start-failed' || e.code === 'mcp-unavailable')
-  assert.ok(scope.calls.some(c => c.disposed))
+  scope.plugin = (mod: any, cfg: any) => {
+    scope.calls.push({ mod, cfg })
+    return {
+      dispose: async () => {
+        scope.calls.push({ disposed: true })
+        throw new Error('boom')
+      },
+    }
+  }
+  await assert.rejects(
+    () => mounter.mount(scope, { serverName: 's1', command: 'node', args: [], cwd: 'C:/d' }),
+    (e: any) => e.code === 'mcp-start-failed' || e.code === 'mcp-unavailable',
+  )
+  assert.ok(scope.calls.some((c) => c.disposed))
 })
 ```
 
@@ -596,11 +713,13 @@ git commit -m "feat: 按 scope 挂载 MCP 的封装"
 ### Task 8: 运行时探测（Node 与 CLI 定位）
 
 **Files:**
+
 - Create: `src/runtime.ts`
 - Modify: `src/errors.ts`
 - Test: `test/runtime.test.ts`
 
 **Interfaces:**
+
 - Consumes: `ConfigData`、`DomainError`、`dshHome()`（`@hyzyn/dsh-kit`）。
 - Produces: `MIN_NODE_VERSION = '22.12.0'`；`compareVersions(a: string, b: string): number`；`satisfiesNode(version: string): boolean`；`cliPathFor(home: string, version: string): string`（`<home>/betteroffice/runtime/<version>/node_modules/@betteroffice/agents/dist/cli.js`）；`findNodeOnPath(env: { PATH?: string }, exists: (p: string) => boolean, sep: string): string[]`；`resolveMcpRuntime(input: { config: ConfigData; home: string; nodeVersion: string; exists(p: string): boolean; env: { PATH?: string }; sep: string }): { command: string; cliPath: string }`，失败抛 `RuntimeUnavailableError`（`code: 'runtime-unavailable'`），消息包含具体原因（缺 Node / Node 版本过低 / 未安装 betteroffice-mcp）。
 
@@ -609,9 +728,21 @@ git commit -m "feat: 按 scope 挂载 MCP 的封装"
 ```ts
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { cliPathFor, compareVersions, findNodeOnPath, satisfiesNode, resolveMcpRuntime, MIN_NODE_VERSION } from '../src/runtime.js'
+import {
+  cliPathFor,
+  compareVersions,
+  findNodeOnPath,
+  satisfiesNode,
+  resolveMcpRuntime,
+  MIN_NODE_VERSION,
+} from '../src/runtime.js'
 
-const cfg = { workspaceMode: 'auto' as const, cleanupMode: 'auto' as const, nodePath: '', runtimeVersion: '' }
+const cfg = {
+  workspaceMode: 'auto' as const,
+  cleanupMode: 'auto' as const,
+  nodePath: '',
+  runtimeVersion: '',
+}
 
 test('版本比较与 22.12.0 下限', () => {
   assert.equal(compareVersions('22.12.0', '22.9.0'), 1)
@@ -621,28 +752,74 @@ test('版本比较与 22.12.0 下限', () => {
   assert.equal(MIN_NODE_VERSION, '22.12.0')
 })
 test('CLI 路径按 home/版本拼接', () => {
-  assert.equal(cliPathFor('C:/h', '0.4.0'), 'C:\\h\\betteroffice\\runtime\\0.4.0\\node_modules\\@betteroffice\\agents\\dist\\cli.js'.replace(/\\/g, require('node:path').sep))
+  assert.equal(
+    cliPathFor('C:/h', '0.4.0'),
+    'C:\\h\\betteroffice\\runtime\\0.4.0\\node_modules\\@betteroffice\\agents\\dist\\cli.js'.replace(
+      /\\/g,
+      require('node:path').sep,
+    ),
+  )
 })
 test('PATH 中找不到 node 时给出缺 Node 原因', () => {
-  assert.throws(() => resolveMcpRuntime({ config: cfg, home: 'C:/h', nodeVersion: '24.0.0', exists: () => false, env: { PATH: 'C:/empty' }, sep: ';' }), /未找到 Node/)
+  assert.throws(
+    () =>
+      resolveMcpRuntime({
+        config: cfg,
+        home: 'C:/h',
+        nodeVersion: '24.0.0',
+        exists: () => false,
+        env: { PATH: 'C:/empty' },
+        sep: ';',
+      }),
+    /未找到 Node/,
+  )
 })
 test('Node 版本过低时报出版本', () => {
   const exists = (p: string) => p.includes('node.exe') || p.includes('cli.js')
-  assert.throws(() => resolveMcpRuntime({ config: cfg, home: 'C:/h', nodeVersion: '20.0.0', exists, env: { PATH: 'C:/n' }, sep: ';' }), /22\.12\.0/)
+  assert.throws(
+    () =>
+      resolveMcpRuntime({
+        config: cfg,
+        home: 'C:/h',
+        nodeVersion: '20.0.0',
+        exists,
+        env: { PATH: 'C:/n' },
+        sep: ';',
+      }),
+    /22\.12\.0/,
+  )
 })
 test('私有 CLI 不存在时提示去配置页安装', () => {
-  assert.throws(() => resolveMcpRuntime({ config: cfg, home: 'C:/h', nodeVersion: '24.0.0', exists: (p) => p.includes('node.exe'), env: { PATH: 'C:/n' }, sep: ';' }), /安装/)
+  assert.throws(
+    () =>
+      resolveMcpRuntime({
+        config: cfg,
+        home: 'C:/h',
+        nodeVersion: '24.0.0',
+        exists: (p) => p.includes('node.exe'),
+        env: { PATH: 'C:/n' },
+        sep: ';',
+      }),
+    /安装/,
+  )
 })
 test('配置了 nodePath 时优先使用', () => {
   const r = resolveMcpRuntime({
-    config: { ...cfg, nodePath: 'C:/custom/node.exe', runtimeVersion: '0.4.0' }, home: 'C:/h', nodeVersion: '24.0.0',
-    exists: (p) => p === 'C:/custom/node.exe' || p.includes('cli.js'), env: { PATH: '' }, sep: ';',
+    config: { ...cfg, nodePath: 'C:/custom/node.exe', runtimeVersion: '0.4.0' },
+    home: 'C:/h',
+    nodeVersion: '24.0.0',
+    exists: (p) => p === 'C:/custom/node.exe' || p.includes('cli.js'),
+    env: { PATH: '' },
+    sep: ';',
   })
   assert.equal(r.command, 'C:/custom/node.exe')
 })
 test('PATH 扫描返回候选 node 可执行文件', () => {
   const exists = (p: string) => p.endsWith('node.exe')
-  assert.deepEqual(findNodeOnPath({ PATH: 'C:/a;C:/b' }, exists, ';'), ['C:\\a\\node.exe', 'C:\\b\\node.exe'].map(p => p.replace(/\\/g, require('node:path').sep)))
+  assert.deepEqual(
+    findNodeOnPath({ PATH: 'C:/a;C:/b' }, exists, ';'),
+    ['C:\\a\\node.exe', 'C:\\b\\node.exe'].map((p) => p.replace(/\\/g, require('node:path').sep)),
+  )
 })
 ```
 
@@ -672,11 +849,13 @@ git commit -m "feat: 运行时探测与可行动错误"
 ### Task 9: 任务注册表
 
 **Files:**
+
 - Create: `src/tasks.ts`
 - Modify: `src/errors.ts`
 - Test: `test/tasks.test.ts`
 
 **Interfaces:**
+
 - Consumes: `planRoot`（Task 6）、`createMounter`（Task 7）、`createWorkspace`/`readLedger`（Task 4）、`resolveDocumentPath`（Task 5）。
 - Produces: `type TaskRecord = { taskId: string; sessionId: string; serverName: string; doc: ResolvedDoc; root: string; readOnly: boolean; workspaceDir: string | null; createdAt: number }`；`createTaskRegistry(deps: { mounter: Mounter; resolveRuntime(): { command: string; cliPath: string }; config(): ConfigData; makeTempDir(taskId: string): Promise<string>; workspaceDirFor(doc: ResolvedDoc, taskId: string): string; now(): Date; newTaskId(): string }): { open(scope: unknown, sessionId: string, input: { path: string; cwd: string; mode?: 'read'|'edit'; workspace?: boolean }): Promise<TaskRecord>; close(scope: unknown, sessionId: string, taskId: string): Promise<void>; list(sessionId: string): TaskRecord[]; get(sessionId: string, taskId: string): TaskRecord }`；错误 `code: 'task-not-found' | 'task-foreign'`。
 
@@ -688,17 +867,42 @@ import assert from 'node:assert/strict'
 import { createTaskRegistry } from '../src/tasks.js'
 
 function harness() {
-  const mounted: string[] = []; const disposed: string[] = []
-  const mounter = { mount: async (_s: unknown, spec: any) => { mounted.push(spec.serverName); return { serverName: spec.serverName, dispose: async () => { disposed.push(spec.serverName) } } }, has: () => true }
+  const mounted: string[] = []
+  const disposed: string[] = []
+  const mounter = {
+    mount: async (_s: unknown, spec: any) => {
+      mounted.push(spec.serverName)
+      return {
+        serverName: spec.serverName,
+        dispose: async () => {
+          disposed.push(spec.serverName)
+        },
+      }
+    },
+    has: () => true,
+  }
   const reg = createTaskRegistry({
     mounter: mounter as any,
     resolveRuntime: () => ({ command: 'node', cliPath: 'C:/h/cli.js' }),
-    config: () => ({ workspaceMode: 'never', cleanupMode: 'auto', nodePath: '', runtimeVersion: '' }),
+    config: () => ({
+      workspaceMode: 'never',
+      cleanupMode: 'auto',
+      nodePath: '',
+      runtimeVersion: '',
+    }),
     makeTempDir: async () => 'C:/tmp/bo-x',
     workspaceDirFor: () => 'C:/d/dsh-a.docx-1-x',
     now: () => new Date(2026, 10, 27, 14, 41, 26),
     newTaskId: () => 'a71c2e90',
-    resolveDocument: async (p: string, cwd: string) => ({ absPath: cwd + '/' + p, realPath: cwd + '/' + p, dir: cwd, name: p, ext: '.docx' as const, size: 1, sha256: 'sha256:x' }),
+    resolveDocument: async (p: string, cwd: string) => ({
+      absPath: cwd + '/' + p,
+      realPath: cwd + '/' + p,
+      dir: cwd,
+      name: p,
+      ext: '.docx' as const,
+      size: 1,
+      sha256: 'sha256:x',
+    }),
   })
   return { reg, mounted, disposed }
 }
@@ -715,12 +919,18 @@ test('关闭时释放挂载并标记任务不可再用', async () => {
   const t = await reg.open({}, 's1', { path: 'a.docx', cwd: 'C:/d' })
   await reg.close({}, 's1', t.taskId)
   assert.deepEqual(disposed, ['bo_a71c2e90'])
-  assert.throws(() => reg.get('s1', t.taskId), (e: any) => e.code === 'task-not-found')
+  assert.throws(
+    () => reg.get('s1', t.taskId),
+    (e: any) => e.code === 'task-not-found',
+  )
 })
 test('别的会话用同一 taskId 被拒', async () => {
   const { reg } = harness()
   const t = await reg.open({}, 's1', { path: 'a.docx', cwd: 'C:/d' })
-  assert.throws(() => reg.get('s2', t.taskId), (e: any) => e.code === 'task-foreign')
+  assert.throws(
+    () => reg.get('s2', t.taskId),
+    (e: any) => e.code === 'task-foreign',
+  )
 })
 test('MCP 挂载失败时不留下任务记录', async () => {
   const { reg } = harness()
@@ -756,10 +966,12 @@ git commit -m "feat: 任务注册表与会话绑定"
 ### Task 10: 5 个 agent 工具
 
 **Files:**
+
 - Create: `src/tools.ts`
 - Test: `test/tools.test.ts`
 
 **Interfaces:**
+
 - Consumes: `TaskRegistry`（Task 9）。
 - Produces: `TOOL_NAMES = ['betteroffice_open','betteroffice_list','betteroffice_checkpoint','betteroffice_deliver','betteroffice_close']`；`createToolDefinitions(deps: { registry: TaskRegistry; sessionId: string; config(): ConfigData }): Array<{ name: string; description: string; parameters: unknown; output: { schema: unknown; render: (value: unknown) => string } }>`；`registerTools(agentTools: { register(def: any): unknown }, deps): void`。
 
@@ -771,14 +983,24 @@ import assert from 'node:assert/strict'
 import { TOOL_NAMES, createToolDefinitions, registerTools } from '../src/tools.js'
 
 const registry: any = {
-  open: async () => ({ taskId: 'a71c2e90', serverName: 'bo_a71c2e90', root: 'C:/d', readOnly: true, doc: { name: 'a.docx' } }),
-  close: async () => {}, list: () => [],
+  open: async () => ({
+    taskId: 'a71c2e90',
+    serverName: 'bo_a71c2e90',
+    root: 'C:/d',
+    readOnly: true,
+    doc: { name: 'a.docx' },
+  }),
+  close: async () => {},
+  list: () => [],
 }
 const cfg = () => ({ workspaceMode: 'auto', cleanupMode: 'auto', nodePath: '', runtimeVersion: '' }) as any
 
 test('定义 5 个工具且每个都带可渲染的 output', () => {
   const defs = createToolDefinitions({ registry, sessionId: 's1', config: cfg })
-  assert.deepEqual(defs.map(d => d.name), TOOL_NAMES)
+  assert.deepEqual(
+    defs.map((d) => d.name),
+    TOOL_NAMES,
+  )
   for (const d of defs) {
     assert.equal(typeof d.output.render, 'function')
     assert.equal(typeof d.output.schema, 'object')
@@ -792,13 +1014,31 @@ test('open 工具返回任务信息文本', async () => {
   assert.match(open.output.render(out), /a71c2e90/)
 })
 test('close 传别人的 taskId 时把 task-foreign 作为工具错误暴露', async () => {
-  const defs = createToolDefinitions({ registry: { ...registry, close: async () => { const e: any = new Error('无权'); e.code = 'task-foreign'; throw e } }, sessionId: 's1', config: cfg })
-  const close = defs.find(d => d.name === 'betteroffice_close') as any
+  const defs = createToolDefinitions({
+    registry: {
+      ...registry,
+      close: async () => {
+        const e: any = new Error('无权')
+        e.code = 'task-foreign'
+        throw e
+      },
+    },
+    sessionId: 's1',
+    config: cfg,
+  })
+  const close = defs.find((d) => d.name === 'betteroffice_close') as any
   await assert.rejects(() => close.execute({ task: 'zzz' }), /无权/)
 })
 test('registerTools 把定义逐个注册', () => {
   const got: string[] = []
-  registerTools({ register: (d: any) => { got.push(d.name) } }, { registry, sessionId: 's1', config: cfg })
+  registerTools(
+    {
+      register: (d: any) => {
+        got.push(d.name)
+      },
+    },
+    { registry, sessionId: 's1', config: cfg },
+  )
   assert.deepEqual(got, TOOL_NAMES)
 })
 ```
@@ -829,10 +1069,12 @@ git commit -m "feat: 5 个 betteroffice 工具"
 ### Task 11: 插件装配（agent 生命周期）
 
 **Files:**
+
 - Modify: `src/index.ts`
 - Test: `test/plugin.test.ts`
 
 **Interfaces:**
+
 - Consumes: 全部前置模块。
 - Produces: `apply(ctx, config)` 的完整行为：解析配置 → 建 mounter/registry → 订阅 `agent/created`（注册工具）与 `agent/disposed`（关闭该 agent 的全部任务）→ `ctx.effect` 注册总清理。
 
@@ -847,10 +1089,21 @@ test('apply 订阅 agent 生命周期并在销毁时清理', () => {
   const listeners: Record<string, Function[]> = {}
   const cleanups: Array<() => void> = []
   const ctx = {
-    on(ev: string, fn: Function) { (listeners[ev] ??= []).push(fn); return () => {} },
-    effect(fn: () => (() => void) | void) { const c = fn(); if (typeof c === 'function') cleanups.push(c); return () => {} },
-    get() { return undefined },
-    inject(_deps: string[], fn: Function) { fn(ctx) },
+    on(ev: string, fn: Function) {
+      ;(listeners[ev] ??= []).push(fn)
+      return () => {}
+    },
+    effect(fn: () => (() => void) | void) {
+      const c = fn()
+      if (typeof c === 'function') cleanups.push(c)
+      return () => {}
+    },
+    get() {
+      return undefined
+    },
+    inject(_deps: string[], fn: Function) {
+      fn(ctx)
+    },
   }
   apply(ctx as any, undefined)
   assert.ok(listeners['agent/created']?.length)
@@ -858,7 +1111,15 @@ test('apply 订阅 agent 生命周期并在销毁时清理', () => {
   assert.ok(cleanups.length > 0)
 })
 test('apply 在没有任何服务时也不抛错', () => {
-  const ctx = { on: () => () => {}, effect: (fn: any) => { fn(); return () => {} }, get: () => undefined, inject: (_d: string[], fn: any) => fn(ctx) }
+  const ctx = {
+    on: () => () => {},
+    effect: (fn: any) => {
+      fn()
+      return () => {}
+    },
+    get: () => undefined,
+    inject: (_d: string[], fn: any) => fn(ctx),
+  }
   assert.doesNotThrow(() => apply(ctx as any, undefined))
 })
 ```
@@ -893,10 +1154,12 @@ git commit -m "feat: 插件装配与 agent 生命周期"
 ### Task 12: 端到端只读验收与文档
 
 **Files:**
+
 - Modify: `README.md`
 - Create: `docs/superpowers/plans/2026-11-28-betteroffice-plugin.md` 已存在（本文件，无需改）
 
 **Interfaces:**
+
 - Consumes: 全部前置。
 - Produces: 可复现的手工验收步骤与结论。
 

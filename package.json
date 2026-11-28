@@ -2,6 +2,22 @@
   "name": "dsh-betteroffice",
   "version": "0.1.0",
   "description": "在 DSH 里打开、读取并编辑 Word/Excel/PowerPoint 文档（BetterOffice MCP 宿主插件）",
+  "keywords": [
+    "betteroffice",
+    "docx",
+    "dsh",
+    "dsh-plugin",
+    "pptx",
+    "xlsx"
+  ],
+  "license": "MIT",
+  "files": [
+    "lib/src",
+    "lib/*.d.ts",
+    "client.js",
+    "cordis.patch.yml",
+    "README.md"
+  ],
   "type": "module",
   "main": "lib/src/index.js",
   "types": "lib/src/index.d.ts",
@@ -13,17 +29,26 @@
     "./client": "./client.js",
     "./package.json": "./package.json"
   },
-  "files": [
-    "lib/src",
-    "lib/*.d.ts",
-    "client.js",
-    "cordis.patch.yml",
-    "README.md"
-  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "node --test --experimental-test-isolation=none \"lib/test/**/*.test.js\"",
     "check": "npm run build && npm test"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "^4.1.0",
+    "@deepseek-ai/dsh-mcp-client": "^0.0.1-rc.1",
+    "@deepseek-ai/schemastery": "3.20.0-alpha.1",
+    "@hyzyn/dsh-kit": "^0.8.1",
+    "@types/node": "^22",
+    "oxfmt": "^0.80.0",
+    "oxlint": "^1.95.0",
+    "typescript": "~5.9.3"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.1.0",
+    "@deepseek-ai/dsh-mcp-client": ">=0.1.7-rc.2",
+    "@deepseek-ai/schemastery": "^3.19.0 || 3.20.0-alpha.1",
+    "@hyzyn/dsh-kit": "^0.8.1"
   },
   "dsh": {
     "manifestVersion": 1,
@@ -39,28 +64,5 @@
         "@deepseek-ai/dsh-client-ui-primitives"
       ]
     }
-  },
-  "keywords": [
-    "dsh",
-    "dsh-plugin",
-    "docx",
-    "xlsx",
-    "pptx",
-    "betteroffice"
-  ],
-  "license": "MIT",
-  "peerDependencies": {
-    "@deepseek-ai/cordis": "^4.1.0",
-    "@deepseek-ai/schemastery": "^3.19.0 || 3.20.0-alpha.1",
-    "@deepseek-ai/dsh-mcp-client": ">=0.1.7-rc.2",
-    "@hyzyn/dsh-kit": "^0.8.1"
-  },
-  "devDependencies": {
-    "typescript": "~5.9.3",
-    "@types/node": "^22",
-    "@deepseek-ai/cordis": "^4.1.0",
-    "@deepseek-ai/schemastery": "3.20.0-alpha.1",
-    "@deepseek-ai/dsh-mcp-client": "^0.0.1-rc.1",
-    "@hyzyn/dsh-kit": "^0.8.1"
   }
 }

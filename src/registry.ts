@@ -29,7 +29,10 @@ export function isRegistryUrl(value: string): boolean {
 
 /** 只用到 fetch 的这一小块，测试可替换。 */
 export interface RegistryFetch {
-  (url: string, init?: { headers?: Record<string, string> }): Promise<{
+  (
+    url: string,
+    init?: { headers?: Record<string, string> },
+  ): Promise<{
     ok: boolean
     status: number
     json(): Promise<unknown>
@@ -45,8 +48,7 @@ export interface FetchLatestOptions {
 
 /** 查 npm 上的最新版本号；失败抛中文 DomainError。 */
 export async function fetchLatestVersion(options: FetchLatestOptions = {}): Promise<string> {
-  const doFetch: RegistryFetch =
-    options.fetch ?? (globalThis.fetch as unknown as RegistryFetch)
+  const doFetch: RegistryFetch = options.fetch ?? (globalThis.fetch as unknown as RegistryFetch)
   if (typeof doFetch !== 'function') {
     throw new DomainError('registry-unreachable', '当前环境没有 fetch，无法检查更新。')
   }

@@ -31,14 +31,24 @@ export function planRoot(input: PlanRootInput): RootPlan {
   const { doc, mode, config, tempDir, workspaceDir, workspaceRequested } = input
 
   if (mode === 'read') {
-    return { root: doc.dir, readOnly: true, args: ['--root', doc.dir, '--read-only'], rootKind: 'parent' }
+    return {
+      root: doc.dir,
+      readOnly: true,
+      args: ['--root', doc.dir, '--read-only'],
+      rootKind: 'parent',
+    }
   }
 
   if (needsWorkspace(config, workspaceRequested)) {
     if (workspaceDir === null) {
       throw new DomainError('workspace-missing', '需要工作文件夹但没有创建：请先准备同名工作文件夹再编辑')
     }
-    return { root: workspaceDir, readOnly: false, args: ['--root', workspaceDir], rootKind: 'workspace' }
+    return {
+      root: workspaceDir,
+      readOnly: false,
+      args: ['--root', workspaceDir],
+      rootKind: 'workspace',
+    }
   }
 
   return { root: tempDir, readOnly: false, args: ['--root', tempDir], rootKind: 'temp' }

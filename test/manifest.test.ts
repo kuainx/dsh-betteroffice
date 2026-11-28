@@ -13,7 +13,10 @@ test('客户端声明官方组件库，卡片才能借到 DSH 的按钮', () => 
   // 漏一个就等于运行时 require 抛错 → 客户端 apply 抛错 → 整个插件起不来。
   const inject = manifest.dsh?.client?.inject
   assert.ok(Array.isArray(inject), 'package.json 的 dsh.client.inject 必须是数组')
-  assert.ok(inject.includes('@deepseek-ai/dsh-client-ui-primitives'), 'dsh.client.inject 要包含 @deepseek-ai/dsh-client-ui-primitives')
+  assert.ok(
+    inject.includes('@deepseek-ai/dsh-client-ui-primitives'),
+    'dsh.client.inject 要包含 @deepseek-ai/dsh-client-ui-primitives',
+  )
 })
 
 test('插件声明 DSH 兼容范围，客户端才肯装', () => {

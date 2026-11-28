@@ -30,7 +30,13 @@ export type CheckpointDeps = {
   invoke: (name: string, args: Record<string, unknown>) => Promise<unknown>
 }
 
-export type Checkpoint = { name: string; path: string; size: number; sha256: string; createdAt: string }
+export type Checkpoint = {
+  name: string
+  path: string
+  size: number
+  sha256: string
+  createdAt: string
+}
 
 export async function createCheckpoint(deps: CheckpointDeps): Promise<Checkpoint> {
   try {

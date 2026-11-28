@@ -8,16 +8,16 @@ import { cliPathFor } from '../src/runtime.js'
 const HOME = 'C:/dsh-home'
 
 function harness(options: { installed?: string[]; configured?: string; latest?: string } = {}) {
-  const installedClis = new Set((options.installed ?? []).map(version => cliPathFor(HOME, version)))
+  const installedClis = new Set((options.installed ?? []).map((version) => cliPathFor(HOME, version)))
   const installedRuntimes = new Set(options.installed ?? [])
   const versions = { current: options.configured ?? '' }
   const installerCalls: string[] = []
   const installer = createInstaller({
     home: HOME,
-    exists: path => installedClis.has(path),
+    exists: (path) => installedClis.has(path),
     mkdir: async () => {},
     run: async (_command, args) => {
-      const spec = args.find(a => a.startsWith('@betteroffice/agents@')) ?? ''
+      const spec = args.find((a) => a.startsWith('@betteroffice/agents@')) ?? ''
       const version = spec.split('@')[2] ?? ''
       installerCalls.push(version)
       installedClis.add(cliPathFor(HOME, version))
@@ -28,9 +28,9 @@ function harness(options: { installed?: string[]; configured?: string; latest?: 
   const command = createBetterOfficeCommand({
     home: HOME,
     nodeVersion: '24.22.1',
-    exists: path => installedClis.has(path),
+    exists: (path) => installedClis.has(path),
     currentConfig: () => ({ runtimeVersion: versions.current, nodePath: '' }),
-    setRuntimeVersion: async version => {
+    setRuntimeVersion: async (version) => {
       versions.current = version
     },
     installer,
@@ -41,7 +41,12 @@ function harness(options: { installed?: string[]; configured?: string; latest?: 
 }
 
 const run = async (command: { handler: (i: never) => Promise<CommandResult> | CommandResult }, input: string) =>
-  await command.handler({ rawInput: ` ${input}`, attachments: [], signal: new AbortController().signal, commandId: 'c1' } as never)
+  await command.handler({
+    rawInput: ` ${input}`,
+    attachments: [],
+    signal: new AbortController().signal,
+    commandId: 'c1',
+  } as never)
 
 test('命令名与描述符合斜杠命令约定', () => {
   const { command } = harness()
@@ -93,7 +98,10 @@ test('检查更新：有新版本时给出更新命令', async () => {
 })
 
 test('更新会装新版本并切换默认', async () => {
-  const { command, versions, installerCalls } = harness({ installed: ['0.3.0'], configured: '0.3.0' })
+  const { command, versions, installerCalls } = harness({
+    installed: ['0.3.0'],
+    configured: '0.3.0',
+  })
   const result = await run(command, '更新 0.4.0')
   assert.equal(result.kind, 'success')
   assert.deepEqual(installerCalls, ['0.4.0'])
@@ -127,7 +135,9 @@ test('安装失败时把中文原因原样返回给用户', async () => {
     setRuntimeVersion: async () => {},
     installer: {
       install: async () => {
-        throw Object.assign(new Error('安装失败（退出码 1）：network timeout'), { code: 'install-failed' })
+        throw Object.assign(new Error('安装失败（退出码 1）：network timeout'), {
+          code: 'install-failed',
+        })
       },
       inFlight: () => [],
     },

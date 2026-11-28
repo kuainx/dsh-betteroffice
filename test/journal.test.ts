@@ -63,7 +63,7 @@ test('列出全部日志时跳过损坏与临时文件', async () => {
   await writeFile(join(dir, 'cccc3333.json'), 'nope', 'utf8')
   await writeFile(join(dir, 'dddd4444.json.tmp'), '{}', 'utf8')
   const all = await listJournals(dir)
-  assert.deepEqual(all.map(item => [item.taskId, item.phase]).sort(), [
+  assert.deepEqual(all.map((item) => [item.taskId, item.phase]).sort(), [
     ['aaaa1111', 'prepared'],
     ['bbbb2222', 'recycled'],
   ])
@@ -94,8 +94,16 @@ test('锁文件记下的是当前进程号，且不同目标互不影响', async
   const first = await acquireLock(dir, 'C:/a.docx')
   const second = await acquireLock(dir, 'C:/b.docx')
   const files = await readdir(dir)
-  assert.equal(files.filter(name => name.endsWith('.lock')).length, 2)
-  const body = JSON.parse(await readFile(join(dir, files.find(name => name.endsWith('.lock'))!), 'utf8'))
+  assert.equal(files.filter((name) => name.endsWith('.lock')).length, 2)
+  const body = JSON.parse(
+    await readFile(
+      join(
+        dir,
+        files.find((name) => name.endsWith('.lock'))!,
+      ),
+      'utf8',
+    ),
+  )
   assert.equal(body.pid, process.pid)
   await first.release()
   await second.release()

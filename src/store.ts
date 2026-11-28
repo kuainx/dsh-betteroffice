@@ -18,7 +18,12 @@ export type StoredSettings = {
   registry: string
 }
 
-const EMPTY: StoredSettings = { runtimeVersion: '', workspaceMode: '', cleanupMode: '', registry: '' }
+const EMPTY: StoredSettings = {
+  runtimeVersion: '',
+  workspaceMode: '',
+  cleanupMode: '',
+  registry: '',
+}
 
 export function storePath(home: string): string {
   return join(home, 'betteroffice', 'settings.json')
@@ -44,7 +49,8 @@ export function readStored(home: string, deps: ReadDeps): StoredSettings {
   if (!deps.exists(path)) return EMPTY
   try {
     const raw = JSON.parse(deps.read(path)) as Record<string, unknown>
-    const version = typeof raw['runtimeVersion'] === 'string' && isVersion(raw['runtimeVersion']) ? raw['runtimeVersion'] : ''
+    const version =
+      typeof raw['runtimeVersion'] === 'string' && isVersion(raw['runtimeVersion']) ? raw['runtimeVersion'] : ''
     return {
       runtimeVersion: version,
       workspaceMode: pick(raw['workspaceMode'], WORKSPACE_MODES),

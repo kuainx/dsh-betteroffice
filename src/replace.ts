@@ -2,12 +2,7 @@ import { constants } from 'node:fs'
 import { copyFile, mkdir, rm, stat } from 'node:fs/promises'
 import { basename, extname, join } from 'node:path'
 import { DomainError } from './errors.js'
-import {
-  acquireLock,
-  clearJournal,
-  writeJournal,
-  type CommitRecord,
-} from './journal.js'
+import { acquireLock, clearJournal, writeJournal, type CommitRecord } from './journal.js'
 import { sha256File } from './paths.js'
 
 export interface ReplaceDeps {

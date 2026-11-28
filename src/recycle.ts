@@ -45,7 +45,7 @@ export function recycleScript(): string {
 }
 
 function lastJson(stdout: string): Record<string, unknown> | undefined {
-  const lines = stdout.split(/\r?\n/).filter(line => line.trim() !== '')
+  const lines = stdout.split(/\r?\n/).filter((line) => line.trim() !== '')
   for (let index = lines.length - 1; index >= 0; index -= 1) {
     const line = lines[index]!.trim()
     if (!line.startsWith('{')) continue
@@ -60,16 +60,10 @@ function lastJson(stdout: string): Record<string, unknown> | undefined {
 }
 
 /** 把文件移入 Windows 回收站；不可用或未被确认时抛错，绝不降级为永久删除。 */
-export async function recycleFile(
-  path: string,
-  deps: { platform?: string; run: RecycleRun },
-): Promise<void> {
+export async function recycleFile(path: string, deps: { platform?: string; run: RecycleRun }): Promise<void> {
   const platform = deps.platform ?? process.platform
   if (platform !== 'win32') {
-    throw new DomainError(
-      'recycle-unavailable',
-      `这个平台（${platform}）没有可用的回收站，只能另存为新文件。`,
-    )
+    throw new DomainError('recycle-unavailable', `这个平台（${platform}）没有可用的回收站，只能另存为新文件。`)
   }
   const result = await deps.run('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', recycleScript()], {
     env: { BO_RECYCLE_PATH: path },

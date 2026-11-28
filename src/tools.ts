@@ -40,12 +40,7 @@ function renderJson(_args: unknown, value: unknown): TextBlock[] {
   return [{ type: 'text', text: typeof value === 'string' ? value : JSON.stringify(value, null, 2) }]
 }
 
-function requiredString(
-  args: Record<string, unknown>,
-  key: string,
-  label: string,
-  hint?: string,
-): string {
+function requiredString(args: Record<string, unknown>, key: string, label: string, hint?: string): string {
   const value = args[key]
   if (typeof value !== 'string' || value.trim() === '') {
     const advice = hint === undefined ? '' : `；${hint}`
@@ -93,8 +88,16 @@ export function createToolDefinitions(deps: ToolDeps): ToolDefinition[] {
       type: 'object',
       properties: {
         path: { type: 'string', description: '文档路径，绝对路径或相对会话工作目录的路径' },
-        mode: { type: 'string', enum: ['read', 'edit'], default: 'read', description: 'read 只读检查，edit 进入编辑草稿' },
-        workspace: { type: 'boolean', description: 'edit 时是否要求使用工作文件夹保存草稿与检查点' },
+        mode: {
+          type: 'string',
+          enum: ['read', 'edit'],
+          default: 'read',
+          description: 'read 只读检查，edit 进入编辑草稿',
+        },
+        workspace: {
+          type: 'boolean',
+          description: 'edit 时是否要求使用工作文件夹保存草稿与检查点',
+        },
       },
       required: ['path'],
       additionalProperties: false,
@@ -231,12 +234,7 @@ export function createToolDefinitions(deps: ToolDeps): ToolDefinition[] {
     output: { schema: OUTPUT_SCHEMA, render: renderJson },
     async execute(args) {
       const taskId = requiredString(args, 'task', '任务 id')
-      const tool = requiredString(
-        args,
-        'tool',
-        'MCP 工具名',
-        'tool 和 args 都要放在顶层，args 里放该工具自己的参数。',
-      )
+      const tool = requiredString(args, 'tool', 'MCP 工具名', 'tool 和 args 都要放在顶层，args 里放该工具自己的参数。')
       const input = (args['args'] ?? {}) as Record<string, unknown>
       return await deps.registry.call(deps.sessionId, taskId, tool, input)
     },
@@ -244,43 +242,43 @@ export function createToolDefinitions(deps: ToolDeps): ToolDefinition[] {
 
   type RawTool = Record<string, unknown>
 
-function toolList(payload: unknown): RawTool[] {
-  if (typeof payload !== 'object' || payload === null) return []
-  const raw = (payload as RawTool)['tools']
-  if (!Array.isArray(raw)) return []
-  return raw.filter((entry): entry is RawTool => typeof entry === 'object' && entry !== null)
-}
-
-function nameOf(entry: RawTool): string {
-  return typeof entry['name'] === 'string' ? entry['name'] : ''
-}
-
-function schemaOf(entry: RawTool): RawTool {
-  const schema = entry['inputSchema']
-  return typeof schema === 'object' && schema !== null ? (schema as RawTool) : {}
-}
-
-function summarizeTool(entry: RawTool): {
-  name: string
-  summary: string
-  required: string[]
-  optional: string[]
-} {
-  const schema = schemaOf(entry)
-  const required = Array.isArray(schema['required'])
-    ? schema['required'].filter((value): value is string => typeof value === 'string')
-    : []
-  const properties = schema['properties']
-  const names = typeof properties === 'object' && properties !== null ? Object.keys(properties) : []
-  const description = typeof entry['description'] === 'string' ? entry['description'] : ''
-  const stop = description.search(/\.\s/)
-  return {
-    name: nameOf(entry),
-    summary: (stop === -1 ? description : description.slice(0, stop + 1)).slice(0, 160),
-    required,
-    optional: names.filter((name) => !required.includes(name)),
+  function toolList(payload: unknown): RawTool[] {
+    if (typeof payload !== 'object' || payload === null) return []
+    const raw = (payload as RawTool)['tools']
+    if (!Array.isArray(raw)) return []
+    return raw.filter((entry): entry is RawTool => typeof entry === 'object' && entry !== null)
   }
-}
+
+  function nameOf(entry: RawTool): string {
+    return typeof entry['name'] === 'string' ? entry['name'] : ''
+  }
+
+  function schemaOf(entry: RawTool): RawTool {
+    const schema = entry['inputSchema']
+    return typeof schema === 'object' && schema !== null ? (schema as RawTool) : {}
+  }
+
+  function summarizeTool(entry: RawTool): {
+    name: string
+    summary: string
+    required: string[]
+    optional: string[]
+  } {
+    const schema = schemaOf(entry)
+    const required = Array.isArray(schema['required'])
+      ? schema['required'].filter((value): value is string => typeof value === 'string')
+      : []
+    const properties = schema['properties']
+    const names = typeof properties === 'object' && properties !== null ? Object.keys(properties) : []
+    const description = typeof entry['description'] === 'string' ? entry['description'] : ''
+    const stop = description.search(/\.\s/)
+    return {
+      name: nameOf(entry),
+      summary: (stop === -1 ? description : description.slice(0, stop + 1)).slice(0, 160),
+      required,
+      optional: names.filter((name) => !required.includes(name)),
+    }
+  }
 
   const tools: ToolDefinition = {
     name: 'betteroffice_tools',
@@ -292,7 +290,10 @@ function summarizeTool(entry: RawTool): {
       type: 'object',
       properties: {
         task: { type: 'string', description: 'betteroffice_open 返回的 taskId' },
-        tool: { type: 'string', description: '可选：只想看这一个工具的完整 inputSchema 时填它的裸名' },
+        tool: {
+          type: 'string',
+          description: '可选：只想看这一个工具的完整 inputSchema 时填它的裸名',
+        },
       },
       required: ['task'],
       additionalProperties: false,
@@ -310,10 +311,7 @@ function summarizeTool(entry: RawTool): {
       }
       const found = listed.find((entry) => nameOf(entry) === wanted)
       if (found === undefined) {
-        throw new DomainError(
-          'invalid-arguments',
-          `没有这个工具：${wanted}；先不带 tool 调一次，看清单里的名字。`,
-        )
+        throw new DomainError('invalid-arguments', `没有这个工具：${wanted}；先不带 tool 调一次，看清单里的名字。`)
       }
       return { tool: found }
     },
@@ -322,9 +320,6 @@ function summarizeTool(entry: RawTool): {
   return [open, list, checkpoint, deliver, replace, close, call, tools]
 }
 
-export function registerTools(
-  agentTools: { register(definition: ToolDefinition): unknown },
-  deps: ToolDeps,
-): void {
+export function registerTools(agentTools: { register(definition: ToolDefinition): unknown }, deps: ToolDeps): void {
   for (const definition of createToolDefinitions(deps)) agentTools.register(definition)
 }

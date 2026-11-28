@@ -77,7 +77,11 @@ interface Written {
 }
 
 function fakeRoutes(
-  options: { rejection?: { status: number; error: string }; body?: unknown; admitThrows?: boolean } = {},
+  options: {
+    rejection?: { status: number; error: string }
+    body?: unknown
+    admitThrows?: boolean
+  } = {},
 ) {
   const routes: FakeRoute[] = []
   const written: Written[] = []
@@ -92,7 +96,7 @@ function fakeRoutes(
   const disposers = registerControlRoutes({
     ctx: {},
     web: {
-      register: route => {
+      register: (route) => {
         routes.push(route as FakeRoute)
         // 宿主 register 返回单个注销函数（不是数组）：数组会让展开语法直接抛错、第二条路由挂不上。
         return () => {
@@ -140,7 +144,7 @@ test('授权来源的 POST 走通并写 JSON', async () => {
 test('GET status 在授权下返回快照', async () => {
   const { routes, written } = fakeRoutes()
   assert.deepEqual(
-    routes.map(route => [route.kind, route.path]),
+    routes.map((route) => [route.kind, route.path]),
     [
       ['exact', '/api/betteroffice/status'],
       ['exact', '/api/betteroffice/action'],
@@ -197,7 +201,11 @@ test('Node 版本不足时动作返回 400，不去跑 npm', async () => {
       nodeVersion: '20.11.0',
       install: async (version: string) => {
         calls.push(version)
-        return { version, dir: `C:/h/runtime/${version}`, cliPath: `C:/h/runtime/${version}/cli.js` }
+        return {
+          version,
+          dir: `C:/h/runtime/${version}`,
+          cliPath: `C:/h/runtime/${version}/cli.js`,
+        }
       },
     }),
   )
@@ -245,9 +253,7 @@ test('settings 动作把两个开关与运行时源原样交给保存', async ()
     registry: 'https://registry.npmmirror.com/',
   })
   assert.equal(r.status, 200)
-  assert.deepEqual(saved, [
-    { workspaceMode: 'always', cleanupMode: 'on', registry: 'https://registry.npmmirror.com/' },
-  ])
+  assert.deepEqual(saved, [{ workspaceMode: 'always', cleanupMode: 'on', registry: 'https://registry.npmmirror.com/' }])
   assert.match(JSON.stringify(r.body), /运行时源 https:\/\/registry\.npmmirror\.com\//)
 })
 
@@ -260,7 +266,12 @@ test('来源不是完整地址时 400，不落盘', async () => {
       },
     }),
   )
-  const r = await api.action({ action: 'settings', workspaceMode: 'auto', cleanupMode: 'auto', registry: 'ftp://x' })
+  const r = await api.action({
+    action: 'settings',
+    workspaceMode: 'auto',
+    cleanupMode: 'auto',
+    registry: 'ftp://x',
+  })
   assert.equal(r.status, 400)
   assert.match(JSON.stringify(r.body), /运行时源地址不对/)
   assert.deepEqual(saved, [])
@@ -278,7 +289,11 @@ test('检查更新与安装都用选中的源', async () => {
       },
       install: async (version: string, registry?: string) => {
         installed.push(`${version}@${registry ?? ''}`)
-        return { version, dir: `C:/h/runtime/${version}`, cliPath: `C:/h/runtime/${version}/cli.js` }
+        return {
+          version,
+          dir: `C:/h/runtime/${version}`,
+          cliPath: `C:/h/runtime/${version}/cli.js`,
+        }
       },
     }),
   )

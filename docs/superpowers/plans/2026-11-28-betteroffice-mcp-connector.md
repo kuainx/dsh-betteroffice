@@ -39,10 +39,12 @@
 ### Task 1: MCP 连接器
 
 **Files:**
+
 - Create: `src/mcp.ts`
 - Test: `test/mcp.test.ts`
 
 **Interfaces:**
+
 - Consumes: `DomainError`、`McpStartFailedError`（`src/errors.ts`）。
 - Produces:
   - `export type McpSpawnSpec = { serverName: string; command: string; args: string[]; cwd: string }`
@@ -91,12 +93,13 @@ Run: `npm run build` → 期望 `TS2307: Cannot find module '../src/mcp.js'`。
 - [ ] **Step 3: 实现 `src/mcp.ts`**
 
 要点（实现者自行补齐细节）：
+
 - `let nextId = 1`；`const pending = new Map<number, { resolve, reject, timer }>()`。
 - stdout 按 `\n` 切行，`JSON.parse` 失败的行直接忽略（服务器可能打印非 JSON）；带 `id` 且 `pending` 里有的，清 timer 后 `resolve(message.result)` / `reject(jsonRpcError)`。
 - `initialize` 用 `startupTimeoutMs ?? 30_000` 计时；超时 `reject(new McpStartFailedError(spec.serverName, new Error('30 秒内没有回应 initialize')))` 并 `child.kill()`。
 - `tools/call` 用 `callTimeoutMs ?? 120_000`；超时 `DomainError('mcp-timeout', \`调用 ${name} 超时（${ms}ms），BetterOffice 可能卡住了。\`)`。
 - `result.isError === true` → `DomainError('mcp-tool-failed', 首条 content[].text 或 JSON.stringify(result))`；正文已经是我们自己的中文错误时不要加前缀。
-- `child.on('exit')` / `child.on('error')` → 把所有 pending 以 `DomainError('mcp-disconnected', \`BetterOffice MCP 断开了（${serverName}），请重新打开文档。\`)` 拒绝，并把 `closed = true`。
+- `child.on('exit')` / `child.on('error')` → 把所有 pending 以 `DomainError('mcp-disconnected', \`BetterOffice MCP 断开了（${serverName}），请重新打开文档。\`)`拒绝，并把`closed = true`。
 - `close()`：`closed = true`、`child.kill()`、`child.stdin.end?.()`，随后的 `call` 立即抛 `mcp-disconnected`。
 - `createConnector` 维护 `Map<serverName, McpConnection>` 供 `has()`；`spawn` 默认 `(cmd, args, opts) => spawn(cmd, args, opts)`（`import { spawn } from 'node:child_process'`）。
 
@@ -114,6 +117,7 @@ git commit -F .scratch/msg-mcp.txt   # "feat: 自己拉起并说 MCP 协议"
 ### Task 2: 任务注册表改走连接器
 
 **Files:**
+
 - Modify: `src/tasks.ts`（`mounter`/`toolViewFor`/`waitToolTimeoutMs` → `connector`；`Entry` 存连接）
 - Modify: `src/checkpoint.ts:48`（`invoke` 收到的是裸工具名，改 `office_export`）
 - Modify: `test/tasks-harness.ts`、`test/tasks.test.ts`
@@ -121,6 +125,7 @@ git commit -F .scratch/msg-mcp.txt   # "feat: 自己拉起并说 MCP 协议"
 - Modify: `src/invoke.ts`（只留 `readToolJson`）、`test/invoke.test.ts`、`src/errors.ts`（删没人用的 `McpUnavailableError`）
 
 **Interfaces:**
+
 - Consumes: Task 1 的 `McpConnection`、`McpSpawnSpec`。
 - Produces: `TaskRegistryDeps` 里 `connector: { connect(spec: McpSpawnSpec): Promise<McpConnection> }`；`TaskRecord` 不变；`TaskRegistry` 签名不变（`open(scope, …)` 的 `scope` 参数保留但不再使用）。
 
@@ -131,6 +136,7 @@ git commit -F .scratch/msg-mcp.txt   # "feat: 自己拉起并说 MCP 协议"
 `harness()` 里 `mounter` 换成 `connector = { connect: async (spec) => {...}, has: () => true }`，仍然记录 `mounted`（每次 connect 的 `serverName`）与 `disposed`（close 过的），并暴露 `connection`。
 
 `test/tasks.test.ts` 断言改为：
+
 - open 后 `calls[0].name === 'office_open'` 且 `calls[0].args.path` 是 root 内相对路径；
 - 工具名不再带 `mcp__bo_x__` 前缀（即 `calls.every(c => !c.name.startsWith('mcp__'))`）；
 - checkpoint/deliver/replace 调到 `office_export`，参数 `{ document, path }` 不变；
@@ -170,11 +176,13 @@ git commit -F .scratch/msg-mcp2.txt   # "refactor: 任务注册表改走自带 M
 ### Task 3: 宿主装配 + 真机冒烟
 
 **Files:**
+
 - Modify: `src/index.ts`（删 `createMounter`/`loadClient`/`toolBag`，改用 `createConnector`）
 - Modify: `docs/superpowers/plans/2026-11-28-betteroffice-config-card.md:341-343`（实测记录追加本次结论）
 - Modify: `.superpowers/sdd/betteroffice-config-card/progress.md`
 
 **Interfaces:**
+
 - Consumes: Task 1 的 `createConnector`、Task 2 的 `TaskRegistryDeps.connector`。
 - Produces: 无（末端任务）。
 
@@ -199,6 +207,7 @@ git commit -F .scratch/msg-mcp3.txt   # "feat: 宿主装配改用自带 MCP 连�
 - [ ] **Step 4: 请用户真机冒烟**
 
 请用户重启 DSH，然后依次：
+
 1. `betteroffice_open` 打开 `D:\Github\dsh-betteroffice\.scratch\samples\smoke.docx`；
 2. `betteroffice_open` 打开 `smoke.pptx`、`smoke.xlsx`；
 3. 各自做一次编辑 → `betteroffice_checkpoint` → `betteroffice_deliver`。

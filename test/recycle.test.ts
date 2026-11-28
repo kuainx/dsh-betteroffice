@@ -43,7 +43,11 @@ test('回收成功时把路径经环境变量传入', async () => {
 })
 
 test('脚本报告回收失败时抛 recycle-failed', async () => {
-  const run = async () => ({ code: 0, stderr: '', stdout: '{"recycled":false,"reason":"文件被占用"}' })
+  const run = async () => ({
+    code: 0,
+    stderr: '',
+    stdout: '{"recycled":false,"reason":"文件被占用"}',
+  })
   await assert.rejects(
     () => recycleFile('C:/d/a.docx', { platform: 'win32', run }),
     (error: unknown) =>

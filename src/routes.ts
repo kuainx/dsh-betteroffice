@@ -37,7 +37,10 @@ const WORKSPACE_TEXT: Record<string, string> = { auto: '自动', never: '不使�
 const CLEANUP_TEXT: Record<string, string> = { off: '不删除', auto: '自动删除', on: '总是删除' }
 
 function fail(status: 400 | 409 | 500, error: unknown): ApiResult {
-  return { status, body: { ok: false, error: error instanceof Error ? error.message : String(error) } }
+  return {
+    status,
+    body: { ok: false, error: error instanceof Error ? error.message : String(error) },
+  }
 }
 
 /** 宿主 webServer 的最小形状：register 返回**一个**注销函数（不是数组）。 */
@@ -95,7 +98,10 @@ export function registerControlRoutes(input: RegisterRoutesInput): readonly (() 
       const result = await run()
       writeJson(response, result.status, result.body)
     } catch (error) {
-      writeJson(response, 500, { ok: false, error: error instanceof Error ? error.message : String(error) })
+      writeJson(response, 500, {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      })
     }
   }
 
@@ -116,7 +122,10 @@ export function registerControlRoutes(input: RegisterRoutesInput): readonly (() 
         if (body === undefined) {
           return {
             status: 400 as const,
-            body: { ok: false, error: '请求体不是合法 JSON。请发送 {"action":"check"} 这样的对象。' },
+            body: {
+              ok: false,
+              error: '请求体不是合法 JSON。请发送 {"action":"check"} 这样的对象。',
+            },
           }
         }
         return api.action(body)
@@ -132,7 +141,9 @@ export function createControlApi(deps: ControlDeps): {
 } {
   function ensureIdle(version: string): void {
     if (deps.inFlight().includes(version)) {
-      throw new DomainError('in-flight', `${version} 正在安装中，等它跑完再点一次就好。`, { status: 409 })
+      throw new DomainError('in-flight', `${version} 正在安装中，等它跑完再点一次就好。`, {
+        status: 409,
+      })
     }
   }
 

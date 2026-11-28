@@ -33,10 +33,12 @@
 ### Task 1: 状态快照纯函数
 
 **Files:**
+
 - Create: `src/control.ts`
 - Test: `test/control.test.ts`
 
 **Interfaces:**
+
 - Produces:
   - `export interface StatusSnapshot { node: { version: string; ok: boolean; required: string }; runtime: { configured: string; installed: readonly string[]; cliReady: boolean }; latest: string | null; inFlight: readonly string[]; messages: readonly string[] }`
   - `export function buildStatus(input: { home: string; nodeVersion: string; config: ConfigData; installed: readonly string[]; exists: (path: string) => boolean; latest?: string | null; inFlight?: readonly string[] }): StatusSnapshot`
@@ -48,25 +50,39 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { buildStatus } from '../src/control.js'
 
-const base = { home: 'C:/h', nodeVersion: '24.22.1', config: { workspaceMode: 'auto', cleanupMode: 'auto', nodePath: '', runtimeVersion: '' } }
+const base = {
+  home: 'C:/h',
+  nodeVersion: '24.22.1',
+  config: { workspaceMode: 'auto', cleanupMode: 'auto', nodePath: '', runtimeVersion: '' },
+}
 
 test('未安装时给出可行动提示', () => {
   const s = buildStatus({ ...base, installed: [], exists: () => false })
   assert.equal(s.runtime.installed.length, 0)
   assert.equal(s.runtime.cliReady, false)
-  assert.ok(s.messages.some(m => m.includes('/betteroffice 安装')))
+  assert.ok(s.messages.some((m) => m.includes('/betteroffice 安装')))
 })
 
 test('Node 版本不足时标记 ok=false 并给出最低版本', () => {
-  const s = buildStatus({ ...base, nodeVersion: '20.11.0', installed: ['0.4.0'], exists: () => true })
+  const s = buildStatus({
+    ...base,
+    nodeVersion: '20.11.0',
+    installed: ['0.4.0'],
+    exists: () => true,
+  })
   assert.equal(s.node.ok, false)
   assert.equal(s.node.required, '22.12.0')
 })
 
 test('已装版本缺 CLI 入口时提示重装', () => {
-  const s = buildStatus({ ...base, config: { ...base.config, runtimeVersion: '0.4.0' }, installed: ['0.4.0'], exists: () => false })
+  const s = buildStatus({
+    ...base,
+    config: { ...base.config, runtimeVersion: '0.4.0' },
+    installed: ['0.4.0'],
+    exists: () => false,
+  })
   assert.equal(s.runtime.cliReady, false)
-  assert.ok(s.messages.some(m => m.includes('重装')))
+  assert.ok(s.messages.some((m) => m.includes('重装')))
 })
 
 test('安装中的版本出现在 inFlight', () => {
@@ -99,10 +115,12 @@ git commit -m "feat: 配置卡片的状态快照"
 ### Task 2: 动作参数校验
 
 **Files:**
+
 - Modify: `src/control.ts`
 - Test: `test/control.test.ts`（追加）
 
 **Interfaces:**
+
 - Produces:
   - `export type ControlAction = 'install' | 'check' | 'update' | 'rollback'`
   - `export interface ActionRequest { action: ControlAction; version?: string }`
@@ -124,7 +142,10 @@ test('rollback 必须带版本', () => {
 })
 
 test('合法请求原样返回', () => {
-  assert.deepEqual(parseAction({ action: 'install', version: '0.4.0' }), { action: 'install', version: '0.4.0' })
+  assert.deepEqual(parseAction({ action: 'install', version: '0.4.0' }), {
+    action: 'install',
+    version: '0.4.0',
+  })
 })
 ```
 
@@ -146,10 +167,12 @@ git commit -m "feat: 配置卡片的动作参数校验"
 ### Task 3: 路由处理函数（不碰 http 对象）
 
 **Files:**
+
 - Create: `src/routes.ts`
 - Test: `test/routes.test.ts`
 
 **Interfaces:**
+
 - Consumes: `buildStatus`、`parseAction`（Task 1、2）；`createInstaller`、`fetchLatestVersion`、`listInstalledRuntimes`、`compareVersions`、`cliPathFor`。
 - Produces:
   - `export interface ControlDeps { home: string; nodeVersion: string; getConfig: () => ConfigData; saveRuntimeVersion: (version: string) => Promise<void>; install: (version: string) => Promise<{ version: string; dir: string; cliPath: string }>; latestVersion: () => Promise<string>; installedVersions: () => readonly string[]; exists: (path: string) => boolean; inFlight: () => readonly string[]; logger?: (message: string, error?: unknown) => void }`
@@ -168,7 +191,13 @@ test('status 返回快照', async () => {
 
 test('install 成功后回写运行时版本并返回 200', async () => {
   const saved: string[] = []
-  const api = createControlApi(fakeDeps({ saveRuntimeVersion: async v => { saved.push(v) } }))
+  const api = createControlApi(
+    fakeDeps({
+      saveRuntimeVersion: async (v) => {
+        saved.push(v)
+      },
+    }),
+  )
   const r = await api.action({ action: 'install', version: '0.4.0' })
   assert.equal(r.status, 200)
   assert.deepEqual(saved, ['0.4.0'])
@@ -187,7 +216,13 @@ test('同一版本安装中再次请求返回 409', async () => {
 })
 
 test('registry 不可用返回 500 与中文原因', async () => {
-  const api = createControlApi(fakeDeps({ latestVersion: async () => { throw new DomainError('registry-unreachable', '拿不到最新版本：网络或代理问题') } }))
+  const api = createControlApi(
+    fakeDeps({
+      latestVersion: async () => {
+        throw new DomainError('registry-unreachable', '拿不到最新版本：网络或代理问题')
+      },
+    }),
+  )
   const r = await api.action({ action: 'check' })
   assert.equal(r.status, 500)
   assert.match(JSON.stringify(r.body), /网络或代理/)
@@ -212,18 +247,24 @@ git commit -m "feat: 配置卡片的 HTTP 动作层"
 ### Task 4: 挂到 webServer 路由并加围栏
 
 **Files:**
+
 - Modify: `src/routes.ts`
 - Test: `test/routes.test.ts`（追加）
 
 **Interfaces:**
+
 - Produces: `export function registerControlRoutes(input: { web: { register: (route: unknown) => readonly (() => void)[] }; api: { status(): Promise<ApiResult>; action(raw: unknown): Promise<ApiResult> }; admitRoute: (ctx: unknown, request: unknown) => { status: number; error: string } | undefined; writeJson: (res: unknown, status: number, body: unknown) => void; readJsonBody: (req: unknown) => Promise<unknown> }): readonly (() => void)[]`
 - 路由：`GET /api/betteroffice/status`、`POST /api/betteroffice/action`。
 
 - [ ] **Step 1: 写失败测试**（假 req/res，断言三件事）
 
 ```ts
-test('非授权来源的动作请求被拒且不调 install', async () => { /* admitRoute 返回 {status:403}，断言 res 写出 403、installed 未变动 */ })
-test('授权来源的 POST 走通并写 JSON', async () => { /* body {action:'check'}，断言 res.status 200 且 body.ok === true */ })
+test('非授权来源的动作请求被拒且不调 install', async () => {
+  /* admitRoute 返回 {status:403}，断言 res 写出 403、installed 未变动 */
+})
+test('授权来源的 POST 走通并写 JSON', async () => {
+  /* body {action:'check'}，断言 res.status 200 且 body.ok === true */
+})
 test('GET status 在授权下返回快照', async () => {})
 ```
 
@@ -245,10 +286,12 @@ git commit -m "feat: betteroffice 配置接口的 web 路由与访问围栏"
 ### Task 5: 宿主装配
 
 **Files:**
+
 - Modify: `src/index.ts`
 - Test: `test/plugin.test.ts`（追加）
 
 **Interfaces:**
+
 - Consumes: `registerControlRoutes`、`createControlApi`、`createInstaller`（经 `createCommandDeps` 已有的装配）、`dshHome()`、`dsh-kit` 的 `admitRoute`/`writeJson`/`readJsonBody`。
 
 - [ ] **Step 1: 写失败测试**（fake `host` 记录 `inject` 名与 `web.register` 调用；断言注册了 `webServer` 且拿到两条路由）
@@ -271,10 +314,12 @@ git commit -m "feat: 把配置接口接进宿主 webServer"
 ### Task 6: 浏览器半体卡片
 
 **Files:**
+
 - Create: `client.js`（包根，单文件）
 - Modify: `package.json`（Task 7 一起改）
 
 **Interfaces:**
+
 - 消费：`GET /api/betteroffice/status` → `StatusSnapshot`；`POST /api/betteroffice/action` → `{ ok, text?, error? }`。
 - 产出：`exports.apply = apply`、`exports.inject = []`（浏览器侧无硬服务依赖）。
 
@@ -306,6 +351,7 @@ git commit -m "feat: BetterOffice 自绘配置卡片"
 ### Task 7: 打包与清单
 
 **Files:**
+
 - Modify: `package.json`
 
 - [ ] **Step 1: 改清单** — `exports` 增加 `"./client": "./client.js"`；`files` 增加 `client.js`；`dsh.client = { platform: 'web', inject: [] }`（若 Task 6 用到 slots，则 `inject: ['@deepseek-ai/dsh-client-ui-slots']`）。
@@ -330,6 +376,7 @@ git commit -m "chore: 打包带上浏览器半体"
 ### Task 8: 文档与收尾
 
 **Files:**
+
 - Modify: `README.md`、`docs/superpowers/plans/2026-11-28-betteroffice-config-card.md`（本文件末尾「实测记录」）
 
 - [ ] **Step 1: README** — 「插件设置」节把「安装/更新/回退只能用 `/betteroffice` 命令」改为「插件详情页有自绘卡片，也可用 `/betteroffice` 命令」；「已知限制」删掉「没有自绘配置页」一条，改留「卡片只在 DSH ≥0.2.0-rc.1 的插件详情页内联，旧宿主退回设置页」。

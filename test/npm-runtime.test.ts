@@ -30,8 +30,8 @@ test('只列出真的装好了 CLI 的版本，且按版本排序', () => {
     join(runtimeDirFor(HOME, '0.2.0'), 'node_modules', '@betteroffice', 'agents', 'dist', 'cli.js'),
   ])
   const installed = listInstalledRuntimes(HOME, {
-    readdir: dir => listings[dir] ?? [],
-    exists: path => present.has(path),
+    readdir: (dir) => listings[dir] ?? [],
+    exists: (path) => present.has(path),
   })
   assert.deepEqual(installed, ['0.2.0', '0.4.0', '0.10.0'])
 })
@@ -63,4 +63,3 @@ test('安装参数装进私有目录、用私有 cache、不改全局', () => {
     join(HOME, 'betteroffice', 'runtime', '0.4.0', '.npm-cache'),
   ])
 })
-

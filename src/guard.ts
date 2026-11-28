@@ -16,8 +16,7 @@ export type GuardDecision = { kind: 'deny'; reason: string }
 const DENIED: Record<string, string> = {
   office_export:
     '不要直接调用 MCP 的导出工具：写文件请用 betteroffice_deliver（另存）或 betteroffice_replace（用户确认后替换原件）。',
-  office_files:
-    '不要用 MCP 的列目录工具：用 betteroffice_open 打开文档，然后按任务 id 继续。',
+  office_files: '不要用 MCP 的列目录工具：用 betteroffice_open 打开文档，然后按任务 id 继续。',
 }
 
 /** 工具名是 `<家族>_<动作>`：带 export / files 段的都是能绕开插件写盘或枚举目录的。 */

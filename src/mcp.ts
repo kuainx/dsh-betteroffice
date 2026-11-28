@@ -83,7 +83,10 @@ export function createConnector(deps: McpConnectorDeps = {}): McpConnector {
   const live = new Map<string, McpConnection>()
 
   async function connect(spec: McpSpawnSpec): Promise<McpConnection> {
-    const child = spawnFn(spec.command, spec.args, { cwd: spec.cwd, stdio: ['pipe', 'pipe', 'pipe'] })
+    const child = spawnFn(spec.command, spec.args, {
+      cwd: spec.cwd,
+      stdio: ['pipe', 'pipe', 'pipe'],
+    })
     // close() 要等它真的走了再让调用方删临时目录，否则 Windows 上句柄还占着，rm 会失败。
     const exited = new Promise<void>((resolve) => {
       child.on('exit', () => resolve())
@@ -142,9 +145,7 @@ export function createConnector(deps: McpConnectorDeps = {}): McpConnector {
         pending.delete(message['id'])
         clearTimeout(entry.timer)
         if (isObject(message['error'])) {
-          entry.reject(
-            new DomainError('mcp-tool-failed', failureText(message['error'])),
-          )
+          entry.reject(new DomainError('mcp-tool-failed', failureText(message['error'])))
           continue
         }
         entry.resolve(message['result'])

@@ -66,11 +66,7 @@ function nodeExeName(): string {
   return process.platform === 'win32' ? 'node.exe' : 'node'
 }
 
-export function findNodeOnPath(
-  env: { PATH?: string },
-  exists: (path: string) => boolean,
-  sep: string,
-): string[] {
+export function findNodeOnPath(env: { PATH?: string }, exists: (path: string) => boolean, sep: string): string[] {
   const dirs = (env.PATH ?? '').split(sep).filter((dir) => dir.trim() !== '')
   const found: string[] = []
   for (const dir of dirs) {
@@ -117,9 +113,7 @@ export function resolveMcpRuntime(input: ResolveRuntimeInput): RuntimeResolution
 
   const version = config.runtimeVersion.trim()
   if (version === '') {
-    throw new RuntimeUnavailableError(
-      '未安装 BetterOffice MCP 运行时。请在对话里发送 /betteroffice 安装。',
-    )
+    throw new RuntimeUnavailableError('未安装 BetterOffice MCP 运行时。请在对话里发送 /betteroffice 安装。')
   }
 
   const cliPath = cliPathFor(home, version)

@@ -25,7 +25,14 @@ function ledger(extra: Partial<TaskLedger> = {}): TaskLedger {
       },
     ],
     deliveries: [
-      { taskId: 'a71c2e90', name: '年度报告.docx', path: 'C:/docs/年度报告.docx', size: 3, sha256: 'x', createdAt: 't' },
+      {
+        taskId: 'a71c2e90',
+        name: '年度报告.docx',
+        path: 'C:/docs/年度报告.docx',
+        size: 3,
+        sha256: 'x',
+        createdAt: 't',
+      },
     ],
     ...extra,
   }
@@ -34,13 +41,22 @@ function ledger(extra: Partial<TaskLedger> = {}): TaskLedger {
 const baseFiles = ['.betteroffice-task.json', 'draft/年度报告.docx', 'checkpoints/年度报告-261127-144200-v1.docx']
 
 test('设置禁用时一律不删', () => {
-  const decision = cleanupDecision({ mode: 'off', ledger: ledger(), files: baseFiles, discard: true })
+  const decision = cleanupDecision({
+    mode: 'off',
+    ledger: ledger(),
+    files: baseFiles,
+    discard: true,
+  })
   assert.equal(decision.remove, false)
   assert.match(decision.reason, /禁用/u)
 })
 
 test('没有交付也没有放弃草稿时保留', () => {
-  const decision = cleanupDecision({ mode: 'auto', ledger: ledger({ deliveries: [] }), files: baseFiles })
+  const decision = cleanupDecision({
+    mode: 'auto',
+    ledger: ledger({ deliveries: [] }),
+    files: baseFiles,
+  })
   assert.equal(decision.remove, false)
   assert.match(decision.reason, /交付/u)
 })
@@ -67,7 +83,12 @@ test('已交付且只剩自己的文件时允许删除', () => {
 })
 
 test('用户放弃草稿时即使没有交付也允许删除', () => {
-  const decision = cleanupDecision({ mode: 'auto', ledger: ledger({ deliveries: [] }), files: baseFiles, discard: true })
+  const decision = cleanupDecision({
+    mode: 'auto',
+    ledger: ledger({ deliveries: [] }),
+    files: baseFiles,
+    discard: true,
+  })
   assert.equal(decision.remove, true)
 })
 
@@ -78,7 +99,7 @@ test('cleanupWorkspace 在允许时真的删掉目录', async () => {
     dir: 'C:/docs/dsh-x',
     readLedger: async () => ledger(),
     listFiles: async () => baseFiles,
-    removeDir: async dir => {
+    removeDir: async (dir) => {
       removed.push(dir)
     },
   })
@@ -94,10 +115,10 @@ test('cleanupWorkspace 在保留时不碰目录，并把原因记进日志', asy
     dir: 'C:/docs/dsh-x',
     readLedger: async () => ledger(),
     listFiles: async () => [...baseFiles, 'notes.txt'],
-    removeDir: async dir => {
+    removeDir: async (dir) => {
       removed.push(dir)
     },
-    logger: message => {
+    logger: (message) => {
       logged.push(message)
     },
   })

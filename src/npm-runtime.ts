@@ -36,8 +36,8 @@ export function listInstalledRuntimes(home: string, deps: RuntimeScanDeps): stri
     return []
   }
   return names
-    .filter(name => VERSION_PATTERN.test(name))
-    .filter(name => deps.exists(cliPathFor(home, name)))
+    .filter((name) => VERSION_PATTERN.test(name))
+    .filter((name) => deps.exists(cliPathFor(home, name)))
     .sort(compareVersions)
 }
 

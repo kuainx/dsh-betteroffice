@@ -89,12 +89,7 @@ export type TaskRegistry = {
   replace(sessionId: string, taskId: string, input?: { confirm?: boolean }): Promise<ReplaceOutcome>
   close(scope: unknown, sessionId: string, taskId: string, input?: { discard?: boolean }): Promise<void>
   /** 把任意 MCP 工具原样转给该任务的连接；导出/列目录这类被守卫禁掉的工具会被拒。 */
-  call(
-    sessionId: string,
-    taskId: string,
-    tool: string,
-    args: Record<string, unknown>,
-  ): Promise<unknown>
+  call(sessionId: string, taskId: string, tool: string, args: Record<string, unknown>): Promise<unknown>
   closeSession(sessionId: string): Promise<void>
   get(sessionId: string, taskId: string): TaskRecord
   list(sessionId: string): TaskRecord[]
@@ -131,9 +126,7 @@ export function createTaskRegistry(deps: TaskRegistryDeps): TaskRegistry {
 
   async function listWorkspaceFiles(dir: string): Promise<readonly string[]> {
     const found = await readdir(dir, { recursive: true, withFileTypes: true })
-    return found
-      .filter(item => item.isFile())
-      .map(item => relative(dir, join(item.parentPath, item.name)))
+    return found.filter((item) => item.isFile()).map((item) => relative(dir, join(item.parentPath, item.name)))
   }
 
   /** 工作文件夹只在「已交付」或「用户放弃草稿」且没有未登记文件时才删。 */
@@ -148,7 +141,7 @@ export function createTaskRegistry(deps: TaskRegistryDeps): TaskRegistry {
         discard,
         readLedger,
         listFiles: listWorkspaceFiles,
-        removeDir: target => rm(target, { recursive: true, force: true }),
+        removeDir: (target) => rm(target, { recursive: true, force: true }),
         logger: deps.logger,
       })
     } catch (error) {
@@ -306,9 +299,7 @@ export function createTaskRegistry(deps: TaskRegistryDeps): TaskRegistry {
         throw new DomainError('checkpoint-failed', '只读任务不产出检查点；请用 mode:"edit" 打开后再存档。')
       }
       const dir =
-        record.workspaceDir === null
-          ? join(record.root, 'checkpoints')
-          : join(record.workspaceDir, 'checkpoints')
+        record.workspaceDir === null ? join(record.root, 'checkpoints') : join(record.workspaceDir, 'checkpoints')
       const checkpoint = await createCheckpoint({
         dir,
         root: record.root,
@@ -350,7 +341,10 @@ export function createTaskRegistry(deps: TaskRegistryDeps): TaskRegistry {
         const staging = pickDeliveryTarget(stagingDir, record.doc.name, existsSync)
         await mkdir(stagingDir, { recursive: true })
         const relativePath = relative(record.root, staging.path).split('\\').join('/')
-        await entry.connection.call('office_export', { document: record.documentId, path: relativePath })
+        await entry.connection.call('office_export', {
+          document: record.documentId,
+          path: relativePath,
+        })
         const info = await stat(staging.path).catch(() => {
           throw new DomainError('deliver-failed', `BetterOffice 没有写出草稿：${staging.path}`)
         })
@@ -400,7 +394,10 @@ export function createTaskRegistry(deps: TaskRegistryDeps): TaskRegistry {
         await mkdir(stagingDir, { recursive: true })
         await rm(candidate, { force: true })
         const relativePath = relative(record.root, candidate).split('\\').join('/')
-        await entry.connection.call('office_export', { document: record.documentId, path: relativePath })
+        await entry.connection.call('office_export', {
+          document: record.documentId,
+          path: relativePath,
+        })
         await stat(candidate).catch(() => {
           throw new DomainError('replace-failed', `BetterOffice 没有写出草稿：${candidate}`)
         })
@@ -438,10 +435,7 @@ export function createTaskRegistry(deps: TaskRegistryDeps): TaskRegistry {
         entry = lookup(sessionId, taskId)
       } catch (error) {
         if (error instanceof DomainError && error.code === 'task-not-found') {
-          throw new DomainError(
-            'task-not-found',
-            `${error.message}；这里要填 betteroffice_open 返回的任务 id。`,
-          )
+          throw new DomainError('task-not-found', `${error.message}；这里要填 betteroffice_open 返回的任务 id。`)
         }
         throw error
       }
@@ -469,9 +463,7 @@ export function createTaskRegistry(deps: TaskRegistryDeps): TaskRegistry {
     },
 
     list(sessionId) {
-      return [...entries.values()]
-        .filter((entry) => entry.record.sessionId === sessionId)
-        .map((entry) => entry.record)
+      return [...entries.values()].filter((entry) => entry.record.sessionId === sessionId).map((entry) => entry.record)
     },
   }
 }

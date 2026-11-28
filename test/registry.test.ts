@@ -2,16 +2,18 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { REGISTRY_PRESETS, fetchLatestVersion, isRegistryUrl, packageUrl } from '../src/registry.js'
 
-const respond = (body: unknown, status = 200) => async () => ({
-  ok: status >= 200 && status < 300,
-  status,
-  json: async () => body,
-})
+const respond =
+  (body: unknown, status = 200) =>
+  async () => ({
+    ok: status >= 200 && status < 300,
+    status,
+    json: async () => body,
+  })
 
 test('取 dist-tags.latest 作为最新版本', async () => {
   const seen: string[] = []
   const version = await fetchLatestVersion({
-    fetch: async url => {
+    fetch: async (url) => {
       seen.push(String(url))
       return (await respond({ 'dist-tags': { latest: '0.4.0' } })()) as never
     },
@@ -77,7 +79,7 @@ test('检查更新打的是选中的那个源', async () => {
   const seen: string[] = []
   await fetchLatestVersion({
     registry: REGISTRY_PRESETS.npmmirror,
-    fetch: async url => {
+    fetch: async (url) => {
       seen.push(String(url))
       return (await respond({ 'dist-tags': { latest: '0.4.0' } })()) as never
     },

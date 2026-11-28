@@ -34,7 +34,7 @@ type CaptureResult = { code: number; stdout: string; stderr: string }
 /** 收完 stdout/stderr、到点杀掉子进程：三个外部调用共用这一份。 */
 function capture(command: string, args: readonly string[], options: CaptureOptions): Promise<CaptureResult> {
   const timeoutMs = options.timeoutMs ?? DEFAULT_SPAWN_TIMEOUT_MS
-  return new Promise<CaptureResult>(resolve => {
+  return new Promise<CaptureResult>((resolve) => {
     const child = spawnPortable(command, [...args], {
       stdio: ['ignore', 'pipe', 'pipe'],
       env: { ...process.env, ...(options.env ?? {}) },
@@ -56,17 +56,17 @@ function capture(command: string, args: readonly string[], options: CaptureOptio
       finish(-1)
     }, timeoutMs)
     timer.unref?.()
-    child.stdout?.on('data', chunk => {
+    child.stdout?.on('data', (chunk) => {
       stdout += String(chunk)
     })
-    child.stderr?.on('data', chunk => {
+    child.stderr?.on('data', (chunk) => {
       stderr += String(chunk)
     })
-    child.on('error', error => {
+    child.on('error', (error) => {
       stderr += `\n${error.message}`
       finish(-1)
     })
-    child.on('close', code => finish(code ?? -1))
+    child.on('close', (code) => finish(code ?? -1))
   })
 }
 
@@ -112,7 +112,7 @@ export function createRuntimeInstaller(options: Pick<WireOptions, 'home' | 'logg
   return createInstaller({
     home: options.home,
     exists: existsSync,
-    mkdir: async path => {
+    mkdir: async (path) => {
       await mkdir(path, { recursive: true })
     },
     run: runNpm,
@@ -128,12 +128,10 @@ export function createCommandDeps(options: WireOptions): CommandDeps {
     nodeVersion: process.versions.node,
     exists: existsSync,
     currentConfig: () => options.getConfig(),
-    setRuntimeVersion: version => options.saveRuntimeVersion(version),
+    setRuntimeVersion: (version) => options.saveRuntimeVersion(version),
     installer,
     latestVersion: async () =>
-      await fetchLatestVersion(
-        options.getRegistry === undefined ? {} : { registry: await options.getRegistry() },
-      ),
+      await fetchLatestVersion(options.getRegistry === undefined ? {} : { registry: await options.getRegistry() }),
     installedVersions: () => listInstalledRuntimes(options.home, { readdir: readdirSync, exists: existsSync }),
   }
 }

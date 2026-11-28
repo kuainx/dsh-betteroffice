@@ -54,7 +54,16 @@ function connect(
     startupTimeoutMs: options.startupTimeoutMs,
     closeTimeoutMs: options.closeTimeoutMs,
   })
-  return { child, connector, ready: connector.connect({ serverName: 'bo_test', command: 'node', args: ['cli.js'], cwd: '.' }) }
+  return {
+    child,
+    connector,
+    ready: connector.connect({
+      serverName: 'bo_test',
+      command: 'node',
+      args: ['cli.js'],
+      cwd: '.',
+    }),
+  }
 }
 
 function request(written: Written | undefined): Written {
@@ -89,7 +98,11 @@ describe('MCP 连接器', () => {
       arguments: { path: 'draft/a.docx' },
     })
 
-    child.reply({ jsonrpc: '2.0', id: written.id, result: { content: [{ type: 'text', text: '{"document":"doc1"}' }] } })
+    child.reply({
+      jsonrpc: '2.0',
+      id: written.id,
+      result: { content: [{ type: 'text', text: '{"document":"doc1"}' }] },
+    })
     assert.deepEqual(await pending, { content: [{ type: 'text', text: '{"document":"doc1"}' }] })
   })
 

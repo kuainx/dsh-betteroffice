@@ -16,7 +16,11 @@ type FakeContext = {
 function fakeContext(
   services: Record<string, unknown> = {},
   injected: string[][] = [],
-): { ctx: FakeContext; listeners: Map<string, ((...args: unknown[]) => void)[]>; cleanups: (() => void)[] } {
+): {
+  ctx: FakeContext
+  listeners: Map<string, ((...args: unknown[]) => void)[]>
+  cleanups: (() => void)[]
+} {
   const listeners = new Map<string, ((...args: unknown[]) => void)[]>()
   const cleanups: (() => void)[] = []
   const ctx: FakeContext = {
@@ -31,7 +35,7 @@ function fakeContext(
       if (typeof cleanup === 'function') cleanups.push(cleanup)
       return () => {}
     },
-    get: name => services[name],
+    get: (name) => services[name],
     inject(deps, fn) {
       injected.push(deps)
       fn(ctx)
@@ -56,9 +60,9 @@ test('apply 把配置卡片的两条路由挂到宿主 webServer 上', () => {
     injected,
   )
   apply(ctx as never, undefined)
-  assert.ok(injected.some(names => names.includes('webServer')))
+  assert.ok(injected.some((names) => names.includes('webServer')))
   assert.deepEqual(
-    routes.map(route => route.path),
+    routes.map((route) => route.path),
     ['/api/betteroffice/status', '/api/betteroffice/action'],
   )
 })
@@ -78,7 +82,7 @@ test('宿主只有 commands 没有 settings 时也注册 /betteroffice', () => {
     injected,
   )
   apply(ctx as never, undefined)
-  const commandDeps = injected.find(deps => deps.includes('commands'))
+  const commandDeps = injected.find((deps) => deps.includes('commands'))
   assert.deepEqual(commandDeps, ['commands'], '设置服务是可选的，不该成为注册命令的前提')
   assert.deepEqual(names, ['betteroffice'])
 })
@@ -149,9 +153,9 @@ test('open 的相对路径按调用时的会话工作目录解析', async () => 
     ctx: { get: () => undefined },
   }
   for (const handler of listeners.get('agent/created') ?? []) handler({ agent })
-  await new Promise(resolve => setTimeout(resolve, 0))
+  await new Promise((resolve) => setTimeout(resolve, 0))
 
-  const open = definitions.find(definition => definition.name === 'betteroffice_open')
+  const open = definitions.find((definition) => definition.name === 'betteroffice_open')
   assert.ok(open !== undefined)
 
   const missing = async (): Promise<string> => {

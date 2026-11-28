@@ -1,9 +1,19 @@
 import { DomainError } from './errors.js'
-import { MIN_NODE_VERSION, changeKind, cliPathFor, compareVersions, nodeGate, rollbackGate, satisfiesNode } from './runtime.js'
+import {
+  MIN_NODE_VERSION,
+  changeKind,
+  cliPathFor,
+  compareVersions,
+  nodeGate,
+  rollbackGate,
+  satisfiesNode,
+} from './runtime.js'
 import type { Installer } from './installer.js'
 
 /** 斜杠命令 handler 的返回契约（dsh-commands 的 CommandResult）。 */
-export type CommandResult = { readonly kind: 'success'; readonly text: string } | { readonly kind: 'error'; readonly text: string }
+export type CommandResult =
+  | { readonly kind: 'success'; readonly text: string }
+  | { readonly kind: 'error'; readonly text: string }
 
 /** 只用到命令注册的这一小块。 */
 export interface CommandApi {
@@ -81,7 +91,7 @@ export function createBetterOfficeCommand(deps: CommandDeps): BetterOfficeComman
     if (change === 'same') {
       return ok(`没有变化：@betteroffice/agents@${result.version} 已经是当前版本。\n- 目录：${result.dir}`)
     }
-    const others = installedList().filter(item => item !== result.version)
+    const others = installedList().filter((item) => item !== result.version)
     const keep = others.length === 0 ? '' : `\n旧版本仍保留：${others.join('、')}（可用 /betteroffice 回退 切回）`
     const note = change === 'downgrade' ? '（这是降级，不是更新）' : ''
     return ok(
@@ -111,7 +121,10 @@ export function createBetterOfficeCommand(deps: CommandDeps): BetterOfficeComman
     name: COMMAND_NAME,
     description: 'BetterOffice：检测 / 安装 / 更新 / 回退文档处理运行时',
     async handler(invocation): Promise<CommandResult> {
-      const words = invocation.rawInput.trim().split(/\s+/).filter(word => word !== '')
+      const words = invocation.rawInput
+        .trim()
+        .split(/\s+/)
+        .filter((word) => word !== '')
       const verb = words[0] ?? '状态'
       const argument = words[1]
       try {

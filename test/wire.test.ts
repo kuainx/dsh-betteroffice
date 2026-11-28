@@ -7,7 +7,12 @@ import { createCommandDeps, runNpm } from '../src/wire.js'
 import { cliPathFor } from '../src/runtime.js'
 import type { ConfigData } from '../src/config.js'
 
-const CONFIG: ConfigData = { workspaceMode: 'auto', cleanupMode: 'auto', nodePath: '', runtimeVersion: '' }
+const CONFIG: ConfigData = {
+  workspaceMode: 'auto',
+  cleanupMode: 'auto',
+  nodePath: '',
+  runtimeVersion: '',
+}
 
 async function homeWithRuntime(version: string): Promise<string> {
   const home = await mkdtemp(join(tmpdir(), 'bo-wire-'))
@@ -45,7 +50,7 @@ test('配置与版本写入透传给宿主', async () => {
   const deps = createCommandDeps({
     home,
     getConfig: () => ({ ...CONFIG, runtimeVersion: '0.4.0' }),
-    saveRuntimeVersion: version => {
+    saveRuntimeVersion: (version) => {
       saved.push(version)
     },
   })
@@ -72,7 +77,9 @@ test('最新版本走 npm registry', async () => {
   const home = await mkdtemp(join(tmpdir(), 'bo-wire-'))
   const original = globalThis.fetch
   globalThis.fetch = (async () =>
-    new Response(JSON.stringify({ 'dist-tags': { latest: '0.4.2' } }), { status: 200 })) as typeof fetch
+    new Response(JSON.stringify({ 'dist-tags': { latest: '0.4.2' } }), {
+      status: 200,
+    })) as typeof fetch
   try {
     const deps = createCommandDeps({ home, getConfig: () => CONFIG, saveRuntimeVersion: () => {} })
     assert.equal(await deps.latestVersion(), '0.4.2')

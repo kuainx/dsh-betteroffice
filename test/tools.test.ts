@@ -18,8 +18,21 @@ const record = {
 function makeRegistry(overrides: Partial<TaskRegistry> = {}): TaskRegistry {
   return {
     open: async () => record,
-    checkpoint: async () => ({ name: 'cp', path: 'C:/d/checkpoints/cp.docx', size: 1, sha256: 's', createdAt: '' }),
-    deliver: async () => ({ taskId: 't1', name: 'a.docx', path: 'C:/d/a.docx', size: 1, sha256: 's', createdAt: '' }),
+    checkpoint: async () => ({
+      name: 'cp',
+      path: 'C:/d/checkpoints/cp.docx',
+      size: 1,
+      sha256: 's',
+      createdAt: '',
+    }),
+    deliver: async () => ({
+      taskId: 't1',
+      name: 'a.docx',
+      path: 'C:/d/a.docx',
+      size: 1,
+      sha256: 's',
+      createdAt: '',
+    }),
     replace: async () => ({ taskId: 't1', path: 'C:/d/a.docx', sha256: 's', bytes: 1 }),
     close: async () => {},
     closeSession: async () => {},
@@ -126,7 +139,11 @@ const sampleTools = {
         required: ['document', 'version'],
       },
     },
-    { name: 'office_open', description: 'Open a document.', inputSchema: { properties: { path: {} } } },
+    {
+      name: 'office_open',
+      description: 'Open a document.',
+      inputSchema: { properties: { path: {} } },
+    },
   ],
 }
 
@@ -167,18 +184,18 @@ test('透传缺 tool 时说清参数该放哪', async () => {
   const defs = createToolDefinitions({ registry: makeRegistry(), sessionId: 's1', config: cfg })
   const pass = defs.find((definition) => definition.name === 'betteroffice_call')!
 
-  await assert.rejects(
-    () => pass.execute({ task: 't1' }, undefined),
-    /tool 和 args 都要放在顶层/,
-  )
+  await assert.rejects(() => pass.execute({ task: 't1' }, undefined), /tool 和 args 都要放在顶层/)
 })
 
 test('registerTools 把定义逐个注册', () => {
   const got: string[] = []
-  registerTools({ register: (definition) => got.push(definition.name) }, {
-    registry: makeRegistry(),
-    sessionId: 's1',
-    config: cfg,
-  })
+  registerTools(
+    { register: (definition) => got.push(definition.name) },
+    {
+      registry: makeRegistry(),
+      sessionId: 's1',
+      config: cfg,
+    },
+  )
   assert.deepEqual(got, [...TOOL_NAMES])
 })

@@ -14,14 +14,14 @@
 
 已定决策：
 
-| 决策 | 取值 | 来源 |
-| --- | --- | --- |
-| 首版范围 | DESIGN §8 四阶段全做，每完成一个工序 commit | 你，m00228 |
-| MCP 运行时 | 不内置；首次使用时引导用户去配置页点「安装」 | 你，m00228 |
-| Agent 工具形态 | Host 薄封装 + 按 agent 挂载 MCP | 你，m00228 |
-| 只读 root | 照 DESIGN 原文：原文件父目录 + `--read-only` | 你，m00549 |
-| 技术形态 | TypeScript 全链路（`tsc` 编译，非无构建 JS） | 你，m00549 |
-| 配置页兜底 | spike 不通过则退化为「自动设置页 + `/betteroffice` 命令」 | 你，m00549 |
+| 决策           | 取值                                                      | 来源       |
+| -------------- | --------------------------------------------------------- | ---------- |
+| 首版范围       | DESIGN §8 四阶段全做，每完成一个工序 commit               | 你，m00228 |
+| MCP 运行时     | 不内置；首次使用时引导用户去配置页点「安装」              | 你，m00228 |
+| Agent 工具形态 | Host 薄封装 + 按 agent 挂载 MCP                           | 你，m00228 |
+| 只读 root      | 照 DESIGN 原文：原文件父目录 + `--read-only`              | 你，m00549 |
+| 技术形态       | TypeScript 全链路（`tsc` 编译，非无构建 JS）              | 你，m00549 |
+| 配置页兜底     | spike 不通过则退化为「自动设置页 + `/betteroffice` 命令」 | 你，m00549 |
 
 ---
 
@@ -56,11 +56,11 @@ betteroffice-mcp --root <dir> [--read-only]（stdio）
 
 ### 3.1 root 矩阵（§3）
 
-| 场景 | root | 参数 | 工具白名单 |
-| --- | --- | --- | --- |
-| 只读原文件 | **原文件父目录** | `--read-only` | 去掉 `office_files`，其余检查类保留 |
-| 编辑、不使用工作文件夹 | 私有临时目录 + 副本 | 读写 | 全量 |
-| 编辑、使用工作文件夹 | `<工作文件夹>` 根 | 读写 | 全量 |
+| 场景                   | root                | 参数          | 工具白名单                          |
+| ---------------------- | ------------------- | ------------- | ----------------------------------- |
+| 只读原文件             | **原文件父目录**    | `--read-only` | 去掉 `office_files`，其余检查类保留 |
+| 编辑、不使用工作文件夹 | 私有临时目录 + 副本 | 读写          | 全量                                |
+| 编辑、使用工作文件夹   | `<工作文件夹>` 根   | 读写          | 全量                                |
 
 **只读模式的残余风险（照原文实现，明确的已知代价）**：root 为父目录时，`office_open` 理论上可打开同级其它文件。`--tools` 只能裁掉 `office_files` 因而禁止枚举，裁不掉路径范围。对策按强度排序：
 
@@ -82,13 +82,13 @@ betteroffice-mcp --root <dir> [--read-only]（stdio）
 
 ### 3.3 Agent 工具（仅 5 个）
 
-| 工具 | 参数 | 行为 |
-| --- | --- | --- |
-| `betteroffice_open` | `path`、`mode`('read'\|'edit'，默认 read) | 解析+校验路径 → 选 root → （需要时）建工作文件夹/副本 → 计算源哈希 → 挂载 MCP → 返回 `taskId`、`documentId`、`root`、`mcpServer`、可用工具前缀 |
-| `betteroffice_list` | — | 列出当前会话的任务与状态 |
-| `betteroffice_checkpoint` | `task`、`label?` | 校验 `draft/` 产物 → 复制进 `checkpoints/N-<name>`（不覆盖）→ 校验真实文件（zip 头 + 可解析）→ 记台账 |
-| `betteroffice_deliver` | `task`、`path?` | 另存为新文件（默认源文件同级、自动取未占用名）；绝不覆盖 |
-| `betteroffice_close` | `task`、`keepFiles?` | 卸载 MCP；按清理设置决定是否删工作文件夹 |
+| 工具                      | 参数                                      | 行为                                                                                                                                           |
+| ------------------------- | ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `betteroffice_open`       | `path`、`mode`('read'\|'edit'，默认 read) | 解析+校验路径 → 选 root → （需要时）建工作文件夹/副本 → 计算源哈希 → 挂载 MCP → 返回 `taskId`、`documentId`、`root`、`mcpServer`、可用工具前缀 |
+| `betteroffice_list`       | —                                         | 列出当前会话的任务与状态                                                                                                                       |
+| `betteroffice_checkpoint` | `task`、`label?`                          | 校验 `draft/` 产物 → 复制进 `checkpoints/N-<name>`（不覆盖）→ 校验真实文件（zip 头 + 可解析）→ 记台账                                          |
+| `betteroffice_deliver`    | `task`、`path?`                           | 另存为新文件（默认源文件同级、自动取未占用名）；绝不覆盖                                                                                       |
+| `betteroffice_close`      | `task`、`keepFiles?`                      | 卸载 MCP；按清理设置决定是否删工作文件夹                                                                                                       |
 
 规矩：agent 只在 `open` 时给路径、只在 `deliver` 时给交付位置；此后一律用插件发的 `taskId/documentId`，且这些 id 与会话绑定（别的会话拿到也用不了）。工具注册走 `agent.ctx.tools.register`，随 agent 销毁自动回收。
 
@@ -127,12 +127,12 @@ betteroffice-mcp --root <dir> [--read-only]（stdio）
 
 ## 4. 数据与持久化
 
-| 数据 | 位置 | 说明 |
-| --- | --- | --- |
-| 任务台账 | `<工作文件夹>/.betteroffice-task.json` + `<dshHome>/betteroffice/journal/<taskId>.json` | 双写；后者用于跨重启恢复 |
-| 私有运行时 | `<dshHome>/betteroffice/runtime/<version>/` | 版本并列存放，回退即切默认 |
-| 临时工作区 | 系统临时目录下 `betteroffice/<taskId>/` | 不使用工作文件夹时的编辑目录 |
-| 配置 | DSH 插件 volatile 配置层 | 不直接改 profile 文件 |
+| 数据       | 位置                                                                                    | 说明                         |
+| ---------- | --------------------------------------------------------------------------------------- | ---------------------------- |
+| 任务台账   | `<工作文件夹>/.betteroffice-task.json` + `<dshHome>/betteroffice/journal/<taskId>.json` | 双写；后者用于跨重启恢复     |
+| 私有运行时 | `<dshHome>/betteroffice/runtime/<version>/`                                             | 版本并列存放，回退即切默认   |
+| 临时工作区 | 系统临时目录下 `betteroffice/<taskId>/`                                                 | 不使用工作文件夹时的编辑目录 |
+| 配置       | DSH 插件 volatile 配置层                                                                | 不直接改 profile 文件        |
 
 ---
 
@@ -199,13 +199,13 @@ test/*.test.ts          node:test
 
 ## 7. 分阶段实施与提交切分
 
-| 阶段 | 内容 | 提交 |
-| --- | --- | --- |
-| 0 | 脚手架：package.json、tsconfig、cordis.patch.yml、.gitignore（`.scratch/`、`.acl-recovery/`）、测试骨架、依赖安装验证 | `chore: 脚手架与仓库卫生` |
-| 1 | paths / workspace / tasks / tools.mount：只读打开 + MCP 挂载 + 5 工具骨架 | `feat: 只读打开与按 agent 挂载 MCP` |
-| 2 | 副本编辑 + 工作文件夹 + 检查点 + 交付 | `feat: 工作文件夹、检查点与另存交付` |
-| 3 | 运行时检测/安装/更新/回退；清理模式；配置页（含 spike） | 拆 2~3 个提交 |
-| 4 | 原文件替换事务（回收站 + 日志恢复） | `feat: 原文件替换事务` |
+| 阶段 | 内容                                                                                                                  | 提交                                 |
+| ---- | --------------------------------------------------------------------------------------------------------------------- | ------------------------------------ |
+| 0    | 脚手架：package.json、tsconfig、cordis.patch.yml、.gitignore（`.scratch/`、`.acl-recovery/`）、测试骨架、依赖安装验证 | `chore: 脚手架与仓库卫生`            |
+| 1    | paths / workspace / tasks / tools.mount：只读打开 + MCP 挂载 + 5 工具骨架                                             | `feat: 只读打开与按 agent 挂载 MCP`  |
+| 2    | 副本编辑 + 工作文件夹 + 检查点 + 交付                                                                                 | `feat: 工作文件夹、检查点与另存交付` |
+| 3    | 运行时检测/安装/更新/回退；清理模式；配置页（含 spike）                                                               | 拆 2~3 个提交                        |
+| 4    | 原文件替换事务（回收站 + 日志恢复）                                                                                   | `feat: 原文件替换事务`               |
 
 每阶段结束前跑：`tsc -p tsconfig.json` 无错 + `node --test --experimental-test-isolation=none lib/test/*.test.js` 全绿 + 手工验收表里该阶段相关项。
 
@@ -237,10 +237,10 @@ test/*.test.ts          node:test
 
 ## 10. 决策记录
 
-| 时间 | 决策 | 理由 |
-| --- | --- | --- |
-| m00228 | 四阶段全做、按工序提交；不内置运行时；薄封装 + 挂载 MCP | 你的选择 |
-| m00549 | 只读 root 照原文：原文件父目录 | 你的选择；残余风险已在 §3.1 记录 |
-| m00549 | TypeScript 全链路 | 你的选择；四个 peer 包已核实公开可装且带类型 |
-| m00549 | 配置页 spike 不通过则退化为自动设置页 + `/betteroffice` 命令 | 你的选择 |
-| 本轮 | 编辑 root 用工作文件夹根（仍偏离原文） | `office_export` 只认 root 内相对路径，否则检查点写不进 `checkpoints/`；未被否决，保留 |
+| 时间   | 决策                                                         | 理由                                                                                  |
+| ------ | ------------------------------------------------------------ | ------------------------------------------------------------------------------------- |
+| m00228 | 四阶段全做、按工序提交；不内置运行时；薄封装 + 挂载 MCP      | 你的选择                                                                              |
+| m00549 | 只读 root 照原文：原文件父目录                               | 你的选择；残余风险已在 §3.1 记录                                                      |
+| m00549 | TypeScript 全链路                                            | 你的选择；四个 peer 包已核实公开可装且带类型                                          |
+| m00549 | 配置页 spike 不通过则退化为自动设置页 + `/betteroffice` 命令 | 你的选择                                                                              |
+| 本轮   | 编辑 root 用工作文件夹根（仍偏离原文）                       | `office_export` 只认 root 内相对路径，否则检查点写不进 `checkpoints/`；未被否决，保留 |

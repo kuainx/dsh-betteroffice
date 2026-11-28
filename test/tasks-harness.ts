@@ -28,7 +28,10 @@ export function harness(
     config?: () => ConfigData
     home?: string
     recycle?: (path: string) => Promise<void>
-    replaceFile?: (input: unknown, deps: unknown) => Promise<{
+    replaceFile?: (
+      input: unknown,
+      deps: unknown,
+    ) => Promise<{
       path: string
       sha256: string
       bytes: number
@@ -65,9 +68,7 @@ export function harness(
             return { content: [{ type: 'text', text: '{}' }] }
           }
           return {
-            content: [
-              { type: 'text', text: JSON.stringify({ document: options.document ?? 'doc1' }) },
-            ],
+            content: [{ type: 'text', text: JSON.stringify({ document: options.document ?? 'doc1' }) }],
           }
         },
         close: async () => {

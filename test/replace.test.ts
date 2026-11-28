@@ -29,7 +29,7 @@ async function fixture(overrides: Partial<ReplaceDeps> = {}): Promise<Fixture> {
   const deps: ReplaceDeps = {
     home,
     platform: 'win32',
-    recycle: async path => {
+    recycle: async (path) => {
       recycled.push(path)
       await rm(path, { force: true })
     },
@@ -98,7 +98,7 @@ test('发布后哈希对不上时从备份恢复原件', async () => {
   const fix = await fixture()
   const broken: ReplaceDeps = {
     ...fix.deps,
-    sha256: async path => (path === fix.candidatePath ? '0'.repeat(64) : await sha256File(path)),
+    sha256: async (path) => (path === fix.candidatePath ? '0'.repeat(64) : await sha256File(path)),
   }
   await assert.rejects(replaceOriginal(base(fix), broken), /校验/)
   assert.equal(await readFile(fix.sourcePath, 'utf8'), fix.sourceText)

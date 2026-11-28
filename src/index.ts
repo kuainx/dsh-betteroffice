@@ -54,8 +54,7 @@ type HostContext = {
 }
 
 function log(message: string, error?: unknown): void {
-  const detail =
-    error === undefined ? '' : `：${error instanceof Error ? error.message : String(error)}`
+  const detail = error === undefined ? '' : `：${error instanceof Error ? error.message : String(error)}`
   console.warn(`[betteroffice] ${message}${detail}`)
 }
 
@@ -80,7 +79,9 @@ export function apply(ctx: Context, config?: ConfigData): void {
     return {
       ...config,
       runtimeVersion: config.runtimeVersion === '' ? stored.runtimeVersion : config.runtimeVersion,
-      workspaceMode: (stored.workspaceMode === '' ? config.workspaceMode : stored.workspaceMode) as ConfigData['workspaceMode'],
+      workspaceMode: (stored.workspaceMode === ''
+        ? config.workspaceMode
+        : stored.workspaceMode) as ConfigData['workspaceMode'],
       cleanupMode: (stored.cleanupMode === '' ? config.cleanupMode : stored.cleanupMode) as ConfigData['cleanupMode'],
     }
   }
@@ -142,24 +143,21 @@ export function apply(ctx: Context, config?: ConfigData): void {
 
   // 替换原文件不可逆：参数里的 confirm 之外，再走一次宿主审批弹窗，用户点同意才真的动原件。
   // 必须继续 next()：排在后面的策略（拒绝规则、审计）不能被我们截断。
-  host.on(
-    'tools/pre-execute',
-    ((execution: { name?: string }, next: () => unknown) => {
-      const name = execution?.name ?? ''
-      const guard = decideMcpCall(name)
-      if (guard !== undefined) return guard
-      if (name !== 'betteroffice_replace') return next()
-      return Promise.resolve(next()).then((rest) => {
-        if (rest !== null && typeof rest === 'object' && (rest as { kind?: string }).kind === 'deny') {
-          return rest
-        }
-        return {
-          kind: 'ask',
-          reason: 'BetterOffice 要把这个文档的原件移入回收站，再用草稿替换它。确认继续？',
-        }
-      })
-    }) as (...args: unknown[]) => void,
-  )
+  host.on('tools/pre-execute', ((execution: { name?: string }, next: () => unknown) => {
+    const name = execution?.name ?? ''
+    const guard = decideMcpCall(name)
+    if (guard !== undefined) return guard
+    if (name !== 'betteroffice_replace') return next()
+    return Promise.resolve(next()).then((rest) => {
+      if (rest !== null && typeof rest === 'object' && (rest as { kind?: string }).kind === 'deny') {
+        return rest
+      }
+      return {
+        kind: 'ask',
+        reason: 'BetterOffice 要把这个文档的原件移入回收站，再用草稿替换它。确认继续？',
+      }
+    })
+  }) as (...args: unknown[]) => void)
 
   // 上次替换如果中断在半路，启动时按事务日志还原或收尾；打开文档前要等它结束。
   const recovery = recoverCommits({ home: dshHome(), logger: log }).catch((error: unknown) => {
@@ -184,7 +182,7 @@ export function apply(ctx: Context, config?: ConfigData): void {
     resolveDocument: resolveDocumentPath,
     home: dshHome(),
     // 回收站是平台能力：非 Windows 上这里会以 recycle-unavailable 结束，工具不会退化成永久删除。
-    recycle: path => recycleFile(path, { run: runPowershell }),
+    recycle: (path) => recycleFile(path, { run: runPowershell }),
     awaitRecovery: () => recovery,
     logger: log,
   })
@@ -222,7 +220,7 @@ export function apply(ctx: Context, config?: ConfigData): void {
   }
 
   // `/betteroffice` 只要有 commands 就能注册：设置服务是可选的，缺了配置项就只落插件自己的记录。
-  host.inject?.(['commands'], scoped => {
+  host.inject?.(['commands'], (scoped) => {
     const commands = (scoped.get('commands') ?? host.get('commands')) as CommandApi | undefined
     if (commands === undefined || typeof commands.register !== 'function') {
       log('宿主没有提供 commands 服务，/betteroffice 命令不可用')
@@ -242,13 +240,13 @@ export function apply(ctx: Context, config?: ConfigData): void {
     const dispose = commands.register({
       name: command.name,
       description: command.description,
-      handler: invocation => command.handler(invocation),
+      handler: (invocation) => command.handler(invocation),
     })
     scoped.effect?.(() => dispose, 'betteroffice.command')
   })
 
   // 配置卡片的两条路由：动作路由会跑 npm、写设置，所以每条都要先过访问围栏。
-  host.inject?.(['webServer'], scoped => {
+  host.inject?.(['webServer'], (scoped) => {
     const web = (scoped.get('webServer') ?? host.get('webServer')) as unknown as RouteWeb | undefined
     if (web === undefined || typeof web.register !== 'function') {
       log('宿主没有 webServer，配置卡片不可用')
@@ -264,7 +262,7 @@ export function apply(ctx: Context, config?: ConfigData): void {
       resolveRegistry: resolveRegistryNow,
       install: (version, registry) => installer.install(version, registry),
       inFlight: () => installer.inFlight(),
-      latestVersion: registry => fetchLatestVersion({ registry }),
+      latestVersion: (registry) => fetchLatestVersion({ registry }),
       installedVersions: () => listInstalledRuntimes(dshHome(), { readdir: readdirSync, exists: existsSync }),
       exists: existsSync,
       logger: log,
@@ -275,7 +273,7 @@ export function apply(ctx: Context, config?: ConfigData): void {
       api,
       admitRoute: (inner, request) => admitRoute(inner as never, request as never),
       writeJson: (response, status, body) => writeJson(response as never, status, body),
-      readJsonBody: request => readJsonBody(request as never),
+      readJsonBody: (request) => readJsonBody(request as never),
     })
     scoped.effect?.(
       () => () => {
@@ -297,9 +295,7 @@ export function apply(ctx: Context, config?: ConfigData): void {
     if (agent === undefined) return
     const sessionId = sessionOf.get(agent) ?? sessionIdOf(agent)
     if (sessionId === undefined) return
-    void registry
-      .closeSession(sessionId)
-      .catch((error: unknown) => log(`关闭会话 ${sessionId} 的任务失败`, error))
+    void registry.closeSession(sessionId).catch((error: unknown) => log(`关闭会话 ${sessionId} 的任务失败`, error))
   })
 
   host.effect(
@@ -314,4 +310,3 @@ export function apply(ctx: Context, config?: ConfigData): void {
     'betteroffice.lifecycle',
   )
 }
-

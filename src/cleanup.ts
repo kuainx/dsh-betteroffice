@@ -33,16 +33,13 @@ export function cleanupDecision(opts: {
     return { remove: false, reason: '还没有已验证的交付，保留草稿' }
   }
   const allowed = allowedFiles(opts.ledger)
-  const unknown = opts.files.map(normalize).filter(file => !allowed.has(file))
+  const unknown = opts.files.map(normalize).filter((file) => !allowed.has(file))
   if (unknown.length > 0) {
     return { remove: false, reason: `有未登记的文件，保留目录：${unknown.slice(0, 3).join('、')}` }
   }
   return {
     remove: true,
-    reason:
-      opts.discard === true
-        ? '用户放弃草稿，且目录里没有未登记的文件'
-        : '草稿已交付且目录里没有未登记的文件',
+    reason: opts.discard === true ? '用户放弃草稿，且目录里没有未登记的文件' : '草稿已交付且目录里没有未登记的文件',
   }
 }
 

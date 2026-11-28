@@ -3,7 +3,12 @@ import assert from 'node:assert/strict'
 import { resolveConfig } from '../src/config.js'
 
 test('空配置得到默认值', () => {
-  assert.deepEqual(resolveConfig(undefined), { workspaceMode: 'auto', cleanupMode: 'auto', nodePath: '', runtimeVersion: '' })
+  assert.deepEqual(resolveConfig(undefined), {
+    workspaceMode: 'auto',
+    cleanupMode: 'auto',
+    nodePath: '',
+    runtimeVersion: '',
+  })
 })
 test('非法枚举值被拒绝', () => {
   assert.throws(() => resolveConfig({ workspaceMode: 'yes' }), /workspaceMode/)

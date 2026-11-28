@@ -56,7 +56,10 @@ test('已经装过同一版本时不再调用 npm', async () => {
 })
 
 test('npm 失败时抛出可读中文错误并带上 stderr 尾部', async () => {
-  const { installer } = harness({ code: 1, stderr: 'npm error code ETIMEDOUT\nnpm error network timeout' })
+  const { installer } = harness({
+    code: 1,
+    stderr: 'npm error code ETIMEDOUT\nnpm error network timeout',
+  })
   await assert.rejects(
     () => installer.install('0.4.0'),
     (error: unknown) => {
@@ -97,13 +100,13 @@ test('缺少版本号或版本号不合法时直接拒绝', async () => {
 
 test('inFlight 暴露正在安装的版本，装完就清空', async () => {
   let release: () => void = () => {}
-  const gate = new Promise<void>(resolve => {
+  const gate = new Promise<void>((resolve) => {
     release = resolve
   })
   let installed = false
   const installer = createInstaller({
     home: HOME,
-    exists: path => installed && path === cliPathFor(HOME, '0.4.0'),
+    exists: (path) => installed && path === cliPathFor(HOME, '0.4.0'),
     mkdir: async () => {},
     run: async () => {
       await gate
