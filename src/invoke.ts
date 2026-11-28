@@ -13,41 +13,85 @@ function isDefinition(value: unknown): value is ToolDefinitionLike {
   return typeof value === 'object' && value !== null && typeof (value as NamedTool).execute === 'function'
 }
 
+/** view() 返回的对象里，工具表可能挂在这些字段下（0.2.3-alpha.2 给的是 visible / registrations）。 */
+const TOOL_KEYS = ['visible', 'registrations', 'definitions', 'items', 'tools'] as const
+
+function nameOf(entry: unknown): string {
+  if (typeof entry === 'object' && entry !== null) {
+    const named = entry as { name?: unknown; toolName?: unknown }
+    const value = named.name ?? named.toolName
+    if (typeof value === 'string') return value
+  }
+  return typeof entry
+}
+
 function findByName(list: unknown, name: string): ToolDefinitionLike | undefined {
   if (!Array.isArray(list)) return undefined
-  const found = list.find(item => (item as NamedTool | null)?.name === name)
+  const found = list.find((item) => (item as NamedTool | null)?.name === name)
   return isDefinition(found) ? found : undefined
+}
+
+function hasGet(value: unknown): value is { get(name: string): unknown } {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    typeof (value as { get?: unknown }).get === 'function'
+  )
+}
+
+function lookupIn(list: unknown, name: string): ToolDefinitionLike | undefined {
+  if (hasGet(list)) {
+    const found = list.get(name)
+    if (isDefinition(found)) return found
+  }
+  const byName = findByName(list, name)
+  if (byName !== undefined) return byName
+  if (typeof list === 'object' && list !== null) {
+    const bag = list as Record<string, unknown>
+    if (isDefinition(bag[name])) return bag[name]
+  }
+  return undefined
 }
 
 /** 把宿主给的任何工具表形状取成一条工具定义；取不到返回 undefined（调用方按工具不存在处理）。 */
 export function lookupTool(view: unknown, name: string): ToolDefinitionLike | undefined {
   if (typeof view !== 'object' || view === null) return undefined
-  const asMap = view as { get?: unknown }
-  if (typeof asMap.get === 'function') {
-    const found = (view as ReadonlyMap<string, unknown>).get(name)
-    return isDefinition(found) ? found : undefined
-  }
-  const direct = findByName(view, name)
+  const direct = lookupIn(view, name)
   if (direct !== undefined) return direct
   const bag = view as Record<string, unknown>
-  if (isDefinition(bag[name])) return bag[name]
-  for (const key of ['definitions', 'items', 'tools']) {
-    const found = findByName(bag[key], name)
+  for (const key of TOOL_KEYS) {
+    if (bag[key] === undefined) continue
+    const found = lookupIn(bag[key], name)
     if (found !== undefined) return found
   }
   return undefined
+}
+
+function describeSlot(value: unknown): string {
+  if (value === null || value === undefined) return String(value)
+  if (typeof value !== 'object') return `typeof ${typeof value}`
+  if (Array.isArray(value)) {
+    return `array(${value.length}){${value.slice(0, 6).map(nameOf).join(',')}}`
+  }
+  if (value instanceof Map) {
+    return `Map(${value.size}){${[...value.keys()].slice(0, 6).join(',')}}`
+  }
+  const ctor = (value as { constructor?: { name?: string } }).constructor?.name ?? 'object'
+  return `${ctor}{${Object.keys(value as Record<string, unknown>).slice(0, 6).join(',')}}`
 }
 
 /** 排查用：把宿主返回的工具表形状说成人话，超时时贴进错误里，省一次盲猜。 */
 export function describeView(view: unknown): string {
   if (view === null) return 'null'
   if (typeof view !== 'object') return `typeof ${typeof view}`
-  if (Array.isArray(view)) return `array(${view.length})`
-  if (view instanceof Map) {
-    return `Map(${view.size}){${[...view.keys()].slice(0, 6).join(',')}}`
-  }
+  if (Array.isArray(view)) return describeSlot(view)
+  if (view instanceof Map) return describeSlot(view)
   const ctor = (view as { constructor?: { name?: string } }).constructor?.name ?? 'object'
-  return `${ctor}{${Object.keys(view as Record<string, unknown>).slice(0, 6).join(',')}}`
+  const bag = view as Record<string, unknown>
+  const parts = Object.keys(bag)
+    .slice(0, 6)
+    .map((key) => `${key}=${describeSlot(bag[key])}`)
+  return `${ctor}{${parts.join(',')}}`
 }
 
 export type InvokeOptions = { signal?: AbortSignal }
