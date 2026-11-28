@@ -12,7 +12,7 @@ const base: { home: string; nodeVersion: string; config: ConfigData } = {
 test('settings 动作原样带出两个开关', () => {
   assert.deepEqual(parseAction({ action: 'settings', workspaceMode: 'always', cleanupMode: 'off' }), {
     action: 'settings',
-    settings: { workspaceMode: 'always', cleanupMode: 'off' },
+    settings: { workspaceMode: 'always', cleanupMode: 'off', registry: '' },
   })
 })
 
@@ -22,7 +22,7 @@ test('settings 的枚举值不对时给出中文原因，别静默改成默认',
 
 test('快照里带上当前的两个开关，卡片才有东西可显示', () => {
   const snapshot = buildStatus({ ...base, installed: [], exists: () => false })
-  assert.deepEqual(snapshot.settings, { workspaceMode: 'auto', cleanupMode: 'auto' })
+  assert.deepEqual(snapshot.settings, { workspaceMode: 'auto', cleanupMode: 'auto', registry: '' })
 })
 
 test('未安装时给出可行动提示', () => {

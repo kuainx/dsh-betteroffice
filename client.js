@@ -13,6 +13,12 @@ const STATUS_URL = '/api/betteroffice/status'
 const ACTION_URL = '/api/betteroffice/action'
 const POLL_MS = 1500
 const STYLE_ID = 'dsh-betteroffice-style'
+/** 运行时源：空串 = 默认档（跟随 npm 自己的 registry 配置）。 */
+const REGISTRY_PRESETS = [
+  { value: '', label: '默认（跟随 npm）' },
+  { value: 'https://registry.npmjs.org/', label: 'npmjs' },
+  { value: 'https://registry.npmmirror.com/', label: 'npmmirror' },
+]
 
 const CARD_CSS = `
 .bo_card { display: flex; flex-direction: column; gap: 12px; padding: 16px; border: 1px solid var(--dsw-alias-border-l2); border-radius: 12px; background: var(--dsw-alias-bg-layer-1); color: var(--dsw-alias-label-primary); font-size: 13px; }
@@ -175,6 +181,9 @@ window.__ModuleLoader__.load({
       const versions = snap === null ? [] : snap.runtime.installed
       const picked = versions.includes(target) ? target : versions[0] || ''
       const disabled = busy !== '' || installing
+      // 存着的不在预设里（历史自定义值）就按默认档显示，避免下拉框空着。
+      const storedRegistry = snap === null ? '' : snap.settings.registry
+      const sourceChoice = REGISTRY_PRESETS.some((preset) => preset.value === storedRegistry) ? storedRegistry : ''
 
       function button(action, label, variant) {
         return h(ActButton, { key: action, variant, disabled, onClick: () => void run(action) }, busy === action ? `${label}…` : label)
@@ -239,6 +248,23 @@ window.__ModuleLoader__.load({
                   h('option', { value: 'off' }, '不删除'),
                   h('option', { value: 'auto' }, '自动删除'),
                   h('option', { value: 'on' }, '总是删除'),
+                ),
+                h('span', { className: 'bo_label', key: 'source-label' }, '运行时源'),
+                h(
+                  'select',
+                  {
+                    key: 'source',
+                    className: 'bo_select',
+                    value: sourceChoice,
+                    disabled: busy !== '',
+                    onChange: (event) =>
+                      void run('settings', {
+                        workspaceMode: snap.settings.workspaceMode,
+                        cleanupMode: snap.settings.cleanupMode,
+                        registry: event.target.value,
+                      }),
+                  },
+                  REGISTRY_PRESETS.map((preset) => h('option', { key: preset.value || 'default', value: preset.value }, preset.label)),
                 ),
               ),
             ]),

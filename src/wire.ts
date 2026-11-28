@@ -14,6 +14,8 @@ export interface WireOptions {
   logger?(message: string, error?: unknown): void
   /** 一次装配里共享的安装器；GUI 路由与 `/betteroffice` 命令必须共用同一张去重表。 */
   installer?: Installer
+  /** 当前生效的源：默认档要问 npm，所以是异步的。 */
+  getRegistry?(): Promise<string>
 }
 
 /** 用 `npm` 装包：stdio 收进内存，退出码决定成败。 */
@@ -65,6 +67,22 @@ export function runPowershell(
   })
 }
 
+/** 读 npm 自己配置的源（`npm config get registry`）；读不到返回空串。 */
+export function readNpmRegistry(cwd: string): Promise<string> {
+  return new Promise<string>(resolve => {
+    const child = spawnPortable('npm', ['config', 'get', 'registry'], {
+      cwd,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    })
+    let stdout = ''
+    child.stdout?.on('data', chunk => {
+      stdout += String(chunk)
+    })
+    child.on('error', () => resolve(''))
+    child.on('close', code => resolve(code === 0 ? stdout : ''))
+  })
+}
+
 /** 按真实宿主能力造一个安装器：装进插件私有目录，走 npm。 */
 export function createRuntimeInstaller(options: Pick<WireOptions, 'home' | 'logger'>): Installer {
   return createInstaller({
@@ -88,7 +106,10 @@ export function createCommandDeps(options: WireOptions): CommandDeps {
     currentConfig: () => options.getConfig(),
     setRuntimeVersion: version => options.saveRuntimeVersion(version),
     installer,
-    latestVersion: async () => await fetchLatestVersion(),
+    latestVersion: async () =>
+      await fetchLatestVersion(
+        options.getRegistry === undefined ? {} : { registry: await options.getRegistry() },
+      ),
     installedVersions: () => listInstalledRuntimes(options.home, { readdir: readdirSync, exists: existsSync }),
   }
 }

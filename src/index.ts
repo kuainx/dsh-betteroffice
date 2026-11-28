@@ -11,6 +11,7 @@ import { decideMcpCall } from './guard.js'
 import { createConnector } from './mcp.js'
 import { listInstalledRuntimes } from './npm-runtime.js'
 import { fetchLatestVersion } from './registry.js'
+import { resolveRegistry } from './registry-source.js'
 import { createControlApi, registerControlRoutes, type RouteWeb } from './routes.js'
 import { resolveDocumentPath } from './paths.js'
 import { resolveMcpRuntime } from './runtime.js'
@@ -19,7 +20,8 @@ import { recycleFile } from './recycle.js'
 import { recoverCommits } from './recovery.js'
 import { createTaskRegistry, type TaskRegistry } from './tasks.js'
 import { registerTools, type ToolDefinition } from './tools.js'
-import { createCommandDeps, createRuntimeInstaller, runPowershell } from './wire.js'
+import { createCommandDeps, createRuntimeInstaller, readNpmRegistry, runPowershell } from './wire.js'
+import type { Installer } from './installer.js'
 
 export const name = 'betteroffice'
 
@@ -95,6 +97,15 @@ export function apply(ctx: Context, config?: ConfigData): void {
   // 安装器与设置作用域各只造一份：配置卡片的按钮和 `/betteroffice` 命令必须落在同一张去重表上，
   // 否则两边各装各的，双击还会真跑两次 npm。
   const runtimeInstaller = createRuntimeInstaller({ home: dshHome(), logger: log })
+  const storedSettings = () => readStored(dshHome(), storeIo())
+  // 「默认」档跟随 npm 自己的配置：卡片与命令共用这一个解析入口，两边不会打不同源。
+  const resolveRegistryNow = (): Promise<string> =>
+    resolveRegistry(storedSettings().registry, () => readNpmRegistry(dshHome()))
+  const installer: Installer = {
+    install: async (version, registry) =>
+      await runtimeInstaller.install(version, registry ?? (await resolveRegistryNow())),
+    inFlight: () => runtimeInstaller.inFlight(),
+  }
   let runtimeSettings: ReturnType<typeof settingsEntryScope>
   const saveRuntimeVersion = async (version: string): Promise<void> => {
     configOverride = { ...currentConfig(), runtimeVersion: version }
@@ -109,7 +120,11 @@ export function apply(ctx: Context, config?: ConfigData): void {
   }
 
   // 卡片上的两个开关：落盘之后立刻改内存里的配置，页面刷新前就生效。
-  const saveSettings = async (patch: { workspaceMode: string; cleanupMode: string }): Promise<void> => {
+  const saveSettings = async (patch: {
+    workspaceMode: string
+    cleanupMode: string
+    registry: string
+  }): Promise<void> => {
     writeStored(dshHome(), patch, storeIo())
     configOverride = {
       ...currentConfig(),
@@ -221,7 +236,8 @@ export function apply(ctx: Context, config?: ConfigData): void {
         getConfig: currentConfig,
         saveRuntimeVersion,
         logger: log,
-        installer: runtimeInstaller,
+        installer,
+        getRegistry: resolveRegistryNow,
       }),
     )
     const dispose = commands.register({
@@ -245,9 +261,11 @@ export function apply(ctx: Context, config?: ConfigData): void {
       getConfig: currentConfig,
       saveRuntimeVersion,
       saveSettings,
-      install: version => runtimeInstaller.install(version),
-      inFlight: () => runtimeInstaller.inFlight(),
-      latestVersion: () => fetchLatestVersion(),
+      storedRegistry: () => storedSettings().registry,
+      resolveRegistry: resolveRegistryNow,
+      install: (version, registry) => installer.install(version, registry),
+      inFlight: () => installer.inFlight(),
+      latestVersion: registry => fetchLatestVersion({ registry }),
       installedVersions: () => listInstalledRuntimes(dshHome(), { readdir: readdirSync, exists: existsSync }),
       exists: existsSync,
       logger: log,

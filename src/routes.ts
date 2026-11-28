@@ -11,10 +11,14 @@ export interface ControlDeps {
   nodeVersion: string
   getConfig: () => ConfigData
   saveRuntimeVersion: (version: string) => Promise<void>
-  /** 卡片上那两个开关：工作文件夹与清理模式。 */
-  saveSettings: (patch: { workspaceMode: string; cleanupMode: string }) => Promise<void>
-  install: (version: string) => Promise<{ version: string; dir: string; cliPath: string }>
-  latestVersion: () => Promise<string>
+  /** 卡片上那两个开关 + 运行时来源。 */
+  saveSettings: (patch: { workspaceMode: string; cleanupMode: string; registry: string }) => Promise<void>
+  /** 已存的来源选择：空串表示默认档。 */
+  storedRegistry: () => string
+  /** 实际要用的源：默认档会去问 npm，读不到退回 npmjs。 */
+  resolveRegistry: () => Promise<string>
+  install: (version: string, registry?: string) => Promise<{ version: string; dir: string; cliPath: string }>
+  latestVersion: (registry: string) => Promise<string>
   installedVersions: () => readonly string[]
   exists: (path: string) => boolean
   inFlight: () => readonly string[]
@@ -142,7 +146,7 @@ export function createControlApi(deps: ControlDeps): {
   }
 
   async function check(): Promise<string> {
-    const latest = await deps.latestVersion()
+    const latest = await deps.latestVersion(await deps.resolveRegistry())
     const current = deps.getConfig().runtimeVersion.trim()
     if (current === '') return `最新版本是 ${latest}，当前还没安装运行时。`
     const diff = compareVersions(latest, current)
@@ -160,7 +164,7 @@ export function createControlApi(deps: ControlDeps): {
       )
     }
     ensureIdle(version)
-    const result = await deps.install(version)
+    const result = await deps.install(version, await deps.resolveRegistry())
     await deps.saveRuntimeVersion(result.version)
     if (request.action === 'update') return `已更新到 ${result.version}。`
     if (request.action === 'rollback') return `已切回 ${result.version}。`
@@ -169,9 +173,10 @@ export function createControlApi(deps: ControlDeps): {
 
   async function run(request: ActionRequest): Promise<string> {
     if (request.action === 'settings') {
-      const patch = request.settings ?? { workspaceMode: '', cleanupMode: '' }
+      const patch = request.settings ?? { workspaceMode: '', cleanupMode: '', registry: '' }
       await deps.saveSettings(patch)
-      return `已保存：工作文件夹 ${WORKSPACE_TEXT[patch.workspaceMode] ?? patch.workspaceMode}，清理模式 ${CLEANUP_TEXT[patch.cleanupMode] ?? patch.cleanupMode}。`
+      const source = patch.registry === '' ? '默认（跟随 npm 配置）' : patch.registry
+      return `已保存：工作文件夹 ${WORKSPACE_TEXT[patch.workspaceMode] ?? patch.workspaceMode}，清理模式 ${CLEANUP_TEXT[patch.cleanupMode] ?? patch.cleanupMode}，运行时源 ${source}。`
     }
     if (request.action === 'check') return check()
     if (request.action === 'rollback') {
@@ -185,7 +190,7 @@ export function createControlApi(deps: ControlDeps): {
       }
       return switchTo(request, version)
     }
-    return switchTo(request, request.version ?? (await deps.latestVersion()))
+    return switchTo(request, request.version ?? (await deps.latestVersion(await deps.resolveRegistry())))
   }
 
   return {
@@ -198,6 +203,7 @@ export function createControlApi(deps: ControlDeps): {
         exists: deps.exists,
         latest: null,
         inFlight: deps.inFlight(),
+        registry: deps.storedRegistry(),
       })
       return { status: 200, body: snapshot }
     },

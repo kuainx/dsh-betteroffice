@@ -3,12 +3,13 @@
 import { CLEANUP_MODES, WORKSPACE_MODES, type ConfigData } from './config.js'
 import { DomainError } from './errors.js'
 import { isVersion } from './npm-runtime.js'
+import { isRegistryUrl } from './registry.js'
 import { MIN_NODE_VERSION, cliPathFor, satisfiesNode } from './runtime.js'
 
 export interface StatusSnapshot {
   node: { version: string; ok: boolean; required: string }
   runtime: { configured: string; installed: readonly string[]; cliReady: boolean }
-  settings: { workspaceMode: string; cleanupMode: string }
+  settings: { workspaceMode: string; cleanupMode: string; registry: string }
   latest: string | null
   inFlight: readonly string[]
   messages: readonly string[]
@@ -22,6 +23,8 @@ export interface StatusInput {
   exists: (path: string) => boolean
   latest?: string | null
   inFlight?: readonly string[]
+  /** 已存的运行时来源；空串表示「默认，跟随 npm 配置」。 */
+  registry?: string
 }
 
 export type ControlAction = 'install' | 'check' | 'update' | 'rollback' | 'settings'
@@ -29,15 +32,16 @@ export type ControlAction = 'install' | 'check' | 'update' | 'rollback' | 'setti
 export interface ActionRequest {
   action: ControlAction
   version?: string
-  settings?: { workspaceMode: string; cleanupMode: string }
+  settings?: { workspaceMode: string; cleanupMode: string; registry: string }
 }
 
 const ACTIONS: readonly ControlAction[] = ['install', 'check', 'update', 'rollback', 'settings']
 
 /** 卡片发来的两个开关：值只看白名单，别的写法一律拒绝，不静默取默认。 */
-function parseSettings(body: { workspaceMode?: unknown; cleanupMode?: unknown }): {
+function parseSettings(body: { workspaceMode?: unknown; cleanupMode?: unknown; registry?: unknown }): {
   workspaceMode: string
   cleanupMode: string
+  registry: string
 } {
   const workspaceMode = body.workspaceMode
   const cleanupMode = body.cleanupMode
@@ -53,7 +57,19 @@ function parseSettings(body: { workspaceMode?: unknown; cleanupMode?: unknown })
       `清理模式取值不对：${cleanupMode === undefined ? '空' : String(cleanupMode)}；可用：off / auto / on。`,
     )
   }
-  return { workspaceMode, cleanupMode }
+  return { workspaceMode, cleanupMode, registry: parseRegistry(body.registry) }
+}
+
+/** 空串 = 默认档（跟随 npm 自己的配置）；其余必须是 http(s) 完整地址。 */
+function parseRegistry(value: unknown): string {
+  if (value === undefined || value === '') return ''
+  if (typeof value !== 'string' || !isRegistryUrl(value)) {
+    throw new DomainError(
+      'invalid-settings',
+      `运行时源地址不对：${value === undefined ? '空' : String(value)}；要写成 https://registry.npmjs.org/ 这样的完整地址，或者留空跟随 npm 配置。`,
+    )
+  }
+  return value.trim()
 }
 
 /** 校验卡片发来的动作：不认识的动作、路径穿越的版本号都在这里挡掉，别进业务逻辑。 */
@@ -107,7 +123,7 @@ export function buildStatus(input: StatusInput): StatusSnapshot {
   return {
     node: { version: nodeVersion, ok: nodeOk, required: MIN_NODE_VERSION },
     runtime: { configured, installed: [...installed], cliReady },
-    settings: { workspaceMode: config.workspaceMode, cleanupMode: config.cleanupMode },
+    settings: { workspaceMode: config.workspaceMode, cleanupMode: config.cleanupMode, registry: input.registry ?? '' },
     latest: input.latest ?? null,
     inFlight: [...(input.inFlight ?? [])],
     messages,

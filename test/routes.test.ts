@@ -17,6 +17,8 @@ function fakeDeps(overrides: Partial<ControlDeps> = {}): ControlDeps {
     getConfig: () => config,
     saveRuntimeVersion: async () => {},
     saveSettings: async () => {},
+    storedRegistry: () => '',
+    resolveRegistry: async () => 'https://registry.npmjs.org/',
     install: async (version: string) => ({
       version,
       dir: `C:/h/runtime/${version}`,
@@ -226,8 +228,8 @@ test('registry 不可用返回 500 与中文原因', async () => {
   assert.match(JSON.stringify(r.body), /网络或代理/)
 })
 
-test('settings 动作把两个开关原样交给保存', async () => {
-  const saved: { workspaceMode: string; cleanupMode: string }[] = []
+test('settings 动作把两个开关与运行时源原样交给保存', async () => {
+  const saved: { workspaceMode: string; cleanupMode: string; registry: string }[] = []
   const api = createControlApi(
     fakeDeps({
       saveSettings: async (patch) => {
@@ -235,9 +237,54 @@ test('settings 动作把两个开关原样交给保存', async () => {
       },
     }),
   )
-  const r = await api.action({ action: 'settings', workspaceMode: 'always', cleanupMode: 'on' })
+  const r = await api.action({
+    action: 'settings',
+    workspaceMode: 'always',
+    cleanupMode: 'on',
+    registry: 'https://registry.npmmirror.com/',
+  })
   assert.equal(r.status, 200)
-  assert.deepEqual(saved, [{ workspaceMode: 'always', cleanupMode: 'on' }])
+  assert.deepEqual(saved, [
+    { workspaceMode: 'always', cleanupMode: 'on', registry: 'https://registry.npmmirror.com/' },
+  ])
+  assert.match(JSON.stringify(r.body), /运行时源 https:\/\/registry\.npmmirror\.com\//)
+})
+
+test('来源不是完整地址时 400，不落盘', async () => {
+  const saved: unknown[] = []
+  const api = createControlApi(
+    fakeDeps({
+      saveSettings: async (patch) => {
+        saved.push(patch)
+      },
+    }),
+  )
+  const r = await api.action({ action: 'settings', workspaceMode: 'auto', cleanupMode: 'auto', registry: 'ftp://x' })
+  assert.equal(r.status, 400)
+  assert.match(JSON.stringify(r.body), /运行时源地址不对/)
+  assert.deepEqual(saved, [])
+})
+
+test('检查更新与安装都用选中的源', async () => {
+  const asked: string[] = []
+  const installed: string[] = []
+  const api = createControlApi(
+    fakeDeps({
+      resolveRegistry: async () => 'https://registry.npmmirror.com/',
+      latestVersion: async (registry: string) => {
+        asked.push(registry)
+        return '0.4.0'
+      },
+      install: async (version: string, registry?: string) => {
+        installed.push(`${version}@${registry ?? ''}`)
+        return { version, dir: `C:/h/runtime/${version}`, cliPath: `C:/h/runtime/${version}/cli.js` }
+      },
+    }),
+  )
+  assert.equal((await api.action({ action: 'check' })).status, 200)
+  assert.equal((await api.action({ action: 'install' })).status, 200)
+  assert.deepEqual(asked, ['https://registry.npmmirror.com/', 'https://registry.npmmirror.com/'])
+  assert.deepEqual(installed, ['0.4.0@https://registry.npmmirror.com/'])
 })
 
 test('保存设置失败时回 500 并把原因带出来', async () => {
