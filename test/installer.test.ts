@@ -95,6 +95,31 @@ test('缺少版本号或版本号不合法时直接拒绝', async () => {
   assert.equal(calls.length, 0)
 })
 
+test('inFlight 暴露正在安装的版本，装完就清空', async () => {
+  let release: () => void = () => {}
+  const gate = new Promise<void>(resolve => {
+    release = resolve
+  })
+  let installed = false
+  const installer = createInstaller({
+    home: HOME,
+    exists: path => installed && path === cliPathFor(HOME, '0.4.0'),
+    mkdir: async () => {},
+    run: async () => {
+      await gate
+      installed = true
+      return { code: 0, stderr: '' }
+    },
+  })
+  const task = installer.install('0.4.0')
+  assert.deepEqual(installer.inFlight(), ['0.4.0'])
+  assert.equal(installer.install('0.4.0'), task)
+  release()
+  const result = await task
+  assert.equal(result.version, '0.4.0')
+  assert.deepEqual(installer.inFlight(), [])
+})
+
 test('同一版本并发安装只真正装一次', async () => {
   const { calls, installer } = harness()
   const [a, b] = await Promise.all([installer.install('0.4.0'), installer.install('0.4.0')])

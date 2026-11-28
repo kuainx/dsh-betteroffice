@@ -17,6 +17,20 @@ async function homeWithRuntime(version: string): Promise<string> {
   return home
 }
 
+test('createCommandDeps 复用注入的 installer', () => {
+  const installer = {
+    install: async (version: string) => ({ version, dir: 'd', cliPath: 'c' }),
+    inFlight: () => ['0.4.0'],
+  }
+  const deps = createCommandDeps({
+    home: 'C:/dsh-home',
+    getConfig: () => CONFIG,
+    saveRuntimeVersion: () => {},
+    installer,
+  })
+  assert.equal(deps.installer, installer)
+})
+
 test('已安装版本从私有运行时目录扫出来', async () => {
   const home = await homeWithRuntime('0.4.0')
   const deps = createCommandDeps({ home, getConfig: () => CONFIG, saveRuntimeVersion: () => {} })

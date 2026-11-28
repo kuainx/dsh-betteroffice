@@ -1,14 +1,17 @@
 import { randomBytes } from 'node:crypto'
-import { existsSync } from 'node:fs'
+import { existsSync, readdirSync } from 'node:fs'
 import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { delimiter } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
-import { dshHome, settingsEntryScope } from '@hyzyn/dsh-kit'
+import { admitRoute, dshHome, readJsonBody, settingsEntryScope, writeJson } from '@hyzyn/dsh-kit'
 import { Config, resolveConfig, type ConfigData } from './config.js'
 import { createBetterOfficeCommand, type CommandApi } from './commands.js'
 import { decideMcpCall } from './guard.js'
 import { createMounter, type McpClientModule } from './mount.js'
+import { listInstalledRuntimes } from './npm-runtime.js'
+import { fetchLatestVersion } from './registry.js'
+import { createControlApi, registerControlRoutes, type RouteWeb } from './routes.js'
 import { resolveDocumentPath } from './paths.js'
 import { resolveMcpRuntime } from './runtime.js'
 import { recycleFile } from './recycle.js'
@@ -16,7 +19,7 @@ import { recoverCommits } from './recovery.js'
 import { createTaskRegistry, type TaskRegistry } from './tasks.js'
 import type { ToolView } from './invoke.js'
 import { registerTools, type ToolDefinition } from './tools.js'
-import { createCommandDeps, runPowershell } from './wire.js'
+import { createCommandDeps, createRuntimeInstaller, runPowershell } from './wire.js'
 
 export const name = 'betteroffice'
 
@@ -70,6 +73,19 @@ export function apply(ctx: Context, config?: ConfigData): void {
       log('配置无效，改用默认值', error)
       return resolveConfig(undefined)
     }
+  }
+
+  // 安装器与设置作用域各只造一份：配置卡片的按钮和 `/betteroffice` 命令必须落在同一张去重表上，
+  // 否则两边各装各的，双击还会真跑两次 npm。
+  const runtimeInstaller = createRuntimeInstaller({ home: dshHome(), logger: log })
+  let runtimeSettings: ReturnType<typeof settingsEntryScope>
+  const saveRuntimeVersion = async (version: string): Promise<void> => {
+    configOverride = { ...currentConfig(), runtimeVersion: version }
+    if (runtimeSettings === undefined) {
+      log('宿主没有提供可写的设置项，运行时版本只在本次会话生效')
+      return
+    }
+    await runtimeSettings.update({ runtimeVersion: version })
   }
 
   const mounter = createMounter({
@@ -187,20 +203,14 @@ export function apply(ctx: Context, config?: ConfigData): void {
       log('宿主没有提供 commands 服务，/betteroffice 命令不可用')
       return
     }
-    const settings = settingsEntryScope(scoped as unknown as Context, 'betteroffice')
+    runtimeSettings = settingsEntryScope(scoped as unknown as Context, 'betteroffice')
     const command = createBetterOfficeCommand(
       createCommandDeps({
         home: dshHome(),
         getConfig: currentConfig,
-        saveRuntimeVersion: async version => {
-          configOverride = { ...currentConfig(), runtimeVersion: version }
-          if (settings === undefined) {
-            log('宿主没有提供可写的设置项，运行时版本只在本次会话生效')
-            return
-          }
-          await settings.update({ runtimeVersion: version })
-        },
+        saveRuntimeVersion,
         logger: log,
+        installer: runtimeInstaller,
       }),
     )
     const dispose = commands.register({
@@ -209,6 +219,40 @@ export function apply(ctx: Context, config?: ConfigData): void {
       handler: invocation => command.handler(invocation),
     })
     scoped.effect?.(() => dispose, 'betteroffice.command')
+  })
+
+  // 配置卡片的两条路由：动作路由会跑 npm、写设置，所以每条都要先过访问围栏。
+  host.inject?.(['webServer'], scoped => {
+    const web = (scoped.get('webServer') ?? host.get('webServer')) as unknown as RouteWeb | undefined
+    if (web === undefined || typeof web.register !== 'function') {
+      log('宿主没有 webServer，配置卡片不可用')
+      return
+    }
+    const api = createControlApi({
+      home: dshHome(),
+      nodeVersion: process.versions.node,
+      getConfig: currentConfig,
+      saveRuntimeVersion,
+      install: version => runtimeInstaller.install(version),
+      inFlight: () => runtimeInstaller.inFlight(),
+      latestVersion: () => fetchLatestVersion(),
+      installedVersions: () => listInstalledRuntimes(dshHome(), { readdir: readdirSync, exists: existsSync }),
+      exists: existsSync,
+      logger: log,
+    })
+    const disposers = registerControlRoutes({
+      web,
+      api,
+      admitRoute: (inner, request) => admitRoute(inner as never, request as never),
+      writeJson: (response, status, body) => writeJson(response as never, status, body),
+      readJsonBody: request => readJsonBody(request as never),
+    })
+    scoped.effect?.(
+      () => () => {
+        for (const dispose of disposers) dispose()
+      },
+      'betteroffice.routes',
+    )
   })
 
   // agent/created 是串行派发，这里不能 await：挂载 MCP 是异步的，失败只记日志。

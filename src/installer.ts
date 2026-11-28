@@ -26,6 +26,8 @@ export interface InstallerDeps {
 
 export interface Installer {
   install(version: string): Promise<InstallResult>
+  /** 正在安装的版本：配置卡片用它提示「正在装」并挡住重复点击。 */
+  inFlight(): readonly string[]
 }
 
 const STDERR_TAIL = 20
@@ -37,7 +39,7 @@ function tail(text: string, lines = STDERR_TAIL): string {
 
 /** 把某一版本的 `@betteroffice/agents` 装进插件私有目录；幂等、并发安全。 */
 export function createInstaller(deps: InstallerDeps): Installer {
-  const inFlight = new Map<string, Promise<InstallResult>>()
+  const pending = new Map<string, Promise<InstallResult>>()
 
   async function run(version: string): Promise<InstallResult> {
     const dir = runtimeDirFor(deps.home, version)
@@ -74,11 +76,14 @@ export function createInstaller(deps: InstallerDeps): Installer {
           new DomainError('invalid-version', `版本号看起来不对：${JSON.stringify(version)}。请用形如 0.4.0 的版本号。`),
         )
       }
-      const running = inFlight.get(version)
+      const running = pending.get(version)
       if (running !== undefined) return running
-      const task = run(version).finally(() => inFlight.delete(version))
-      inFlight.set(version, task)
+      const task = run(version).finally(() => pending.delete(version))
+      pending.set(version, task)
       return task
+    },
+    inFlight(): readonly string[] {
+      return [...pending.keys()]
     },
   }
 }

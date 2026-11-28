@@ -3,7 +3,7 @@ import { mkdir } from 'node:fs/promises'
 import { spawnPortable } from '@hyzyn/dsh-kit'
 import type { CommandDeps, CommandResult } from './commands.js'
 import type { ConfigData } from './config.js'
-import { createInstaller, type RunResult } from './installer.js'
+import { createInstaller, type Installer, type RunResult } from './installer.js'
 import { listInstalledRuntimes } from './npm-runtime.js'
 import { fetchLatestVersion } from './registry.js'
 
@@ -12,6 +12,8 @@ export interface WireOptions {
   getConfig(): ConfigData
   saveRuntimeVersion(version: string): Promise<void> | void
   logger?(message: string, error?: unknown): void
+  /** 一次装配里共享的安装器；GUI 路由与 `/betteroffice` 命令必须共用同一张去重表。 */
+  installer?: Installer
 }
 
 /** 用 `npm` 装包：stdio 收进内存，退出码决定成败。 */
@@ -63,9 +65,9 @@ export function runPowershell(
   })
 }
 
-/** 把真实宿主能力接成 `/betteroffice` 命令需要的依赖。 */
-export function createCommandDeps(options: WireOptions): CommandDeps {
-  const installer = createInstaller({
+/** 按真实宿主能力造一个安装器：装进插件私有目录，走 npm。 */
+export function createRuntimeInstaller(options: Pick<WireOptions, 'home' | 'logger'>): Installer {
+  return createInstaller({
     home: options.home,
     exists: existsSync,
     mkdir: async path => {
@@ -74,6 +76,11 @@ export function createCommandDeps(options: WireOptions): CommandDeps {
     run: runNpm,
     ...(options.logger === undefined ? {} : { logger: options.logger }),
   })
+}
+
+/** 把真实宿主能力接成 `/betteroffice` 命令需要的依赖。 */
+export function createCommandDeps(options: WireOptions): CommandDeps {
+  const installer = options.installer ?? createRuntimeInstaller(options)
   return {
     home: options.home,
     nodeVersion: process.versions.node,
