@@ -62,9 +62,10 @@ test('同一版本安装中再次请求返回 409', async () => {
 })
 
 interface FakeRoute {
+  kind: string
   method: string
   path: string
-  handler: (ctx: unknown, request: unknown, res: unknown) => Promise<void>
+  handler: (request: unknown, response: unknown) => Promise<void>
 }
 
 interface Written {
@@ -72,10 +73,13 @@ interface Written {
   body: unknown
 }
 
-function fakeRoutes(options: { rejection?: { status: number; error: string }; body?: unknown } = {}) {
+function fakeRoutes(
+  options: { rejection?: { status: number; error: string }; body?: unknown; admitThrows?: boolean } = {},
+) {
   const routes: FakeRoute[] = []
   const written: Written[] = []
   const calls: string[] = []
+  let disposed = 0
   const deps = fakeDeps({
     install: async (version: string) => {
       calls.push(version)
@@ -83,21 +87,33 @@ function fakeRoutes(options: { rejection?: { status: number; error: string }; bo
     },
   })
   const disposers = registerControlRoutes({
+    ctx: {},
     web: {
       register: route => {
         routes.push(route as FakeRoute)
-        return [() => {}]
+        // 宿主 register 返回单个注销函数（不是数组）：数组会让展开语法直接抛错、第二条路由挂不上。
+        return () => {
+          disposed += 1
+        }
       },
     },
     api: createControlApi(deps),
-    admitRoute: () => options.rejection,
+    admitRoute: () => {
+      if (options.admitThrows === true) throw new Error('围栏自己坏了')
+      return options.rejection
+    },
     writeJson: (res, status, body) => {
       written.push({ status, body })
       void res
     },
     readJsonBody: async () => options.body,
   })
-  return { routes, written, calls, disposers }
+  return { routes, written, calls, disposers, disposed: () => disposed }
+}
+
+/** 宿主以 (req, res) 两个参数调用 handler。 */
+async function hit(route: FakeRoute, method = route.method): Promise<void> {
+  await route.handler({ method }, {})
 }
 
 test('非授权来源的动作请求被拒且不调 install', async () => {
@@ -105,7 +121,7 @@ test('非授权来源的动作请求被拒且不调 install', async () => {
     rejection: { status: 403, error: 'forbidden' },
     body: { action: 'install', version: '0.4.0' },
   })
-  await routes[1]!.handler({}, {}, {})
+  await hit(routes[1]!)
   assert.equal(written[0]?.status, 403)
   assert.match(JSON.stringify(written[0]?.body), /forbidden/)
   assert.deepEqual(calls, [])
@@ -113,25 +129,87 @@ test('非授权来源的动作请求被拒且不调 install', async () => {
 
 test('授权来源的 POST 走通并写 JSON', async () => {
   const { routes, written } = fakeRoutes({ body: { action: 'check' } })
-  await routes[1]!.handler({}, {}, {})
+  await hit(routes[1]!)
   assert.equal(written[0]?.status, 200)
   assert.equal((written[0]?.body as { ok: boolean }).ok, true)
 })
 
 test('GET status 在授权下返回快照', async () => {
   const { routes, written } = fakeRoutes()
-  const disposers = routes.map(route => route.path)
-  assert.deepEqual(disposers, ['/api/betteroffice/status', '/api/betteroffice/action'])
-  await routes[0]!.handler({}, {}, {})
+  assert.deepEqual(
+    routes.map(route => [route.kind, route.path]),
+    [
+      ['exact', '/api/betteroffice/status'],
+      ['exact', '/api/betteroffice/action'],
+    ],
+  )
+  await hit(routes[0]!)
   assert.equal(written[0]?.status, 200)
   assert.ok((written[0]?.body as { runtime: unknown }).runtime !== undefined)
 })
 
 test('请求体不是合法 JSON 时返回 400', async () => {
   const { routes, written } = fakeRoutes({ body: undefined })
-  await routes[1]!.handler({}, {}, {})
+  await hit(routes[1]!)
   assert.equal(written[0]?.status, 400)
   assert.match(JSON.stringify(written[0]?.body), /合法 JSON/)
+})
+
+test('每条路由各返回一个注销函数，调用后两条都能摘掉', () => {
+  const { disposers, disposed } = fakeRoutes()
+  assert.equal(disposers.length, 2)
+  for (const dispose of disposers) {
+    assert.equal(typeof dispose, 'function')
+    dispose()
+  }
+  assert.equal(disposed(), 2)
+})
+
+test('方法不对返回 405，不执行动作', async () => {
+  const { routes, written, calls } = fakeRoutes({ body: { action: 'install', version: '0.4.0' } })
+  await hit(routes[1]!, 'GET')
+  assert.equal(written[0]?.status, 405)
+  assert.deepEqual(calls, [])
+})
+
+test('围栏抛错也回 JSON 500，而不是让宿主兜底成 400', async () => {
+  const { routes, written } = fakeRoutes({ admitThrows: true })
+  await hit(routes[0]!)
+  assert.equal(written[0]?.status, 500)
+  assert.equal((written[0]?.body as { ok: boolean }).ok, false)
+})
+
+test('回退到没装过的版本返回 400 且列出可选项', async () => {
+  const api = createControlApi(fakeDeps({ installedVersions: () => ['0.3.0'] }))
+  const r = await api.action({ action: 'rollback', version: '0.1.0' })
+  assert.equal(r.status, 400)
+  assert.match(JSON.stringify(r.body), /回退只能选已安装的版本：0\.3\.0/)
+})
+
+test('Node 版本不足时动作返回 400，不去跑 npm', async () => {
+  const calls: string[] = []
+  const api = createControlApi(
+    fakeDeps({
+      nodeVersion: '20.11.0',
+      install: async (version: string) => {
+        calls.push(version)
+        return { version, dir: `C:/h/runtime/${version}`, cliPath: `C:/h/runtime/${version}/cli.js` }
+      },
+    }),
+  )
+  const r = await api.action({ action: 'install', version: '0.4.0' })
+  assert.equal(r.status, 400)
+  assert.match(JSON.stringify(r.body), /需要 ≥22\.12\.0/)
+  assert.deepEqual(calls, [])
+})
+
+test('安装结束后同一版本可以再装，不再 409', async () => {
+  let installing = true
+  const api = createControlApi(fakeDeps({ inFlight: () => (installing ? ['0.4.0'] : []) }))
+  assert.equal((await api.action({ action: 'install', version: '0.4.0' })).status, 409)
+  // 那一次 npm 跑完了：inFlight 清空，同样的请求应该放行。
+  installing = false
+  assert.equal((await api.action({ action: 'install', version: '0.4.0' })).status, 200)
 })
 
 test('registry 不可用返回 500 与中文原因', async () => {

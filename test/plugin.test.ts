@@ -44,7 +44,8 @@ test('apply 把配置卡片的两条路由挂到宿主 webServer 上', () => {
       webServer: {
         register: (route: { method: string; path: string }) => {
           routes.push(route)
-          return [() => {}]
+          // 跟宿主一致：返回单个注销函数，不是数组。
+          return () => {}
         },
       },
     },

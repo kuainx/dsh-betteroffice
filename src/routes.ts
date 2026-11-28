@@ -4,7 +4,7 @@ import type { ConfigData } from './config.js'
 import { buildStatus, parseAction } from './control.js'
 import type { ActionRequest, StatusSnapshot } from './control.js'
 import { DomainError } from './errors.js'
-import { compareVersions } from './runtime.js'
+import { MIN_NODE_VERSION, compareVersions, satisfiesNode } from './runtime.js'
 
 export interface ControlDeps {
   home: string
@@ -22,7 +22,7 @@ export interface ControlDeps {
 export type ApiResult = { status: 200 | 400 | 409 | 500; body: unknown }
 
 /** 这几类错误是用户输入或时机的错，回 400；安装中的撞车回 409；其余一律 500。 */
-const BAD_REQUEST_CODES = new Set(['invalid-action', 'invalid-version', 'rollback-unknown'])
+const BAD_REQUEST_CODES = new Set(['invalid-action', 'invalid-version', 'rollback-unknown', 'node-too-old'])
 
 function fail(status: 400 | 409 | 500, error: unknown): ApiResult {
   return { status, body: { ok: false, error: error instanceof Error ? error.message : String(error) } }
@@ -34,19 +34,28 @@ function statusOf(error: unknown): 400 | 409 | 500 {
   return BAD_REQUEST_CODES.has(error.code) ? 400 : 500
 }
 
-/** 宿主 webServer 的最小形状：register 返回一组注销函数。 */
+/** 宿主 webServer 的最小形状：register 返回**一个**注销函数（不是数组）。 */
 export interface RouteWeb {
-  register(route: ControlRoute): readonly (() => void)[]
+  register(route: ControlRoute): () => void
 }
 
-/** 一条路由：宿主把 (ctx, request, response) 交给 handler。 */
+/**
+ * 一条精确匹配路由。
+ *
+ * 宿主以 `(req, res)` 调用 handler，`kind: 'exact'` 才是精确表——省了它会被塞进
+ * prefix 表，`/api/betteroffice/statusxyz` 也会命中。宿主只认 kind / path /
+ * handler / auth，method 是我们自己拿来回 405 的。
+ */
 export interface ControlRoute {
+  kind: 'exact'
   method: 'GET' | 'POST'
   path: string
-  handler(ctx: unknown, request: unknown, response: unknown): Promise<void>
+  handler(request: unknown, response: unknown): Promise<void>
 }
 
 export interface RegisterRoutesInput {
+  /** 注册时的插件 Context：admitRoute 要用它读宿主服务，请求进来时才有值。 */
+  ctx: unknown
   web: RouteWeb
   api: { status(): Promise<ApiResult>; action(raw: unknown): Promise<ApiResult> }
   admitRoute: (ctx: unknown, request: unknown) => { status: number; error: string } | undefined
@@ -59,20 +68,24 @@ export const ACTION_PATH = '/api/betteroffice/action'
 
 /** 把控制接口挂到宿主 webServer 上；每条路由第一件事都是过访问围栏。 */
 export function registerControlRoutes(input: RegisterRoutesInput): readonly (() => void)[] {
-  const { web, api, admitRoute, writeJson, readJsonBody } = input
+  const { ctx, web, api, admitRoute, writeJson, readJsonBody } = input
 
   async function guarded(
-    ctx: unknown,
     request: unknown,
     response: unknown,
+    method: ControlRoute['method'],
     run: () => Promise<ApiResult> | ApiResult,
   ): Promise<void> {
-    const rejection = admitRoute(ctx, request)
-    if (rejection !== undefined) {
-      writeJson(response, rejection.status, { ok: false, error: rejection.error })
-      return
-    }
     try {
+      const rejection = admitRoute(ctx, request)
+      if (rejection !== undefined) {
+        writeJson(response, rejection.status, { ok: false, error: rejection.error })
+        return
+      }
+      if ((request as { method?: unknown }).method !== method) {
+        writeJson(response, 405, { ok: false, error: `这个地址只接受 ${method} 请求。` })
+        return
+      }
       const result = await run()
       writeJson(response, result.status, result.body)
     } catch (error) {
@@ -81,16 +94,18 @@ export function registerControlRoutes(input: RegisterRoutesInput): readonly (() 
   }
 
   const statusRoute: ControlRoute = {
+    kind: 'exact',
     method: 'GET',
     path: STATUS_PATH,
-    handler: (ctx, request, response) => guarded(ctx, request, response, () => api.status()),
+    handler: (request, response) => guarded(request, response, 'GET', () => api.status()),
   }
 
   const actionRoute: ControlRoute = {
+    kind: 'exact',
     method: 'POST',
     path: ACTION_PATH,
-    handler: (ctx, request, response) =>
-      guarded(ctx, request, response, async () => {
+    handler: (request, response) =>
+      guarded(request, response, 'POST', async () => {
         const body = await readJsonBody(request)
         if (body === undefined) {
           return {
@@ -102,7 +117,7 @@ export function registerControlRoutes(input: RegisterRoutesInput): readonly (() 
       }),
   }
 
-  return [...web.register(statusRoute), ...web.register(actionRoute)]
+  return [web.register(statusRoute), web.register(actionRoute)]
 }
 
 export function createControlApi(deps: ControlDeps): {
@@ -126,6 +141,13 @@ export function createControlApi(deps: ControlDeps): {
   }
 
   async function switchTo(request: ActionRequest, version: string): Promise<string> {
+    // 命令侧先过 Node 门禁（src/commands.ts），卡片这边没有就会装出一份跑不起来的运行时。
+    if (!satisfiesNode(deps.nodeVersion)) {
+      throw new DomainError(
+        'node-too-old',
+        `当前 Node 是 ${deps.nodeVersion}，BetterOffice 需要 ≥${MIN_NODE_VERSION}。请升级 Node.js，或在设置里填写 node 路径。`,
+      )
+    }
     ensureIdle(version)
     const result = await deps.install(version)
     await deps.saveRuntimeVersion(result.version)

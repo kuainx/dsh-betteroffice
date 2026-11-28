@@ -42,6 +42,10 @@ export function parseAction(raw: unknown): ActionRequest {
       `不认识的操作：${action === undefined ? '空' : String(action)}；可用：install / check / update / rollback。`,
     )
   }
+  // 给了 version 但不是字符串（123 / null / 对象）不能当成「没给」——那会静默装成最新版。
+  if ('version' in body && typeof body.version !== 'string') {
+    throw new DomainError('invalid-version', `版本号看起来不对：${String(body.version)}；只能是 1.2.3 这样的形式。`)
+  }
   const version = typeof body.version === 'string' ? body.version.trim() : undefined
   if (action === 'rollback' && !version) {
     throw new DomainError('invalid-action', '回退需要指定版本号，写成 0.4.0 这样的形式。')

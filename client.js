@@ -39,8 +39,21 @@ window.__ModuleLoader__.load({
       const load = React.useCallback(async () => {
         try {
           const response = await fetch(STATUS_URL, { headers: { accept: 'application/json' } })
-          const body = await response.json()
-          if (body.ok === false) throw new Error(body.error || '读不到运行时状态。')
+          if (!response.ok) {
+            throw new Error(`读不到运行时状态（HTTP ${response.status}），稍后再试；一直这样请重启 DSH。`)
+          }
+          // 401 的 HTML 页、别的路由的 JSON 都别拿去渲染：形状不对就给一句话，别白屏。
+          const body = await response.json().catch(() => null)
+          if (
+            body === null ||
+            typeof body !== 'object' ||
+            body.ok === false ||
+            typeof body.node !== 'object' ||
+            typeof body.runtime !== 'object' ||
+            !Array.isArray(body.inFlight)
+          ) {
+            throw new Error(body && body.error ? body.error : '宿主返回的状态不是配置卡片认识的格式，请把 DSH 升到 0.2.0-rc.1 以上。')
+          }
           setSnap(body)
         } catch (error) {
           setResult({ kind: 'error', text: readable(error) })
@@ -69,7 +82,8 @@ window.__ModuleLoader__.load({
           const response = await fetch(ACTION_URL, {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
-            body: JSON.stringify(action === 'rollback' ? { action, version: target } : { action }),
+            // 回退发的是下拉框实际选中的那个版本：target 初始是空串，直接发它是必然 400。
+            body: JSON.stringify(action === 'rollback' ? { action, version: picked } : { action }),
           })
           const body = await response.json().catch(() => ({}))
           if (body.ok === true) {
@@ -134,7 +148,8 @@ window.__ModuleLoader__.load({
       )
     }
 
-    exports.inject = []
+    // 必须声明 slots：cordis 4 对没 inject 的服务属性访问会直接抛错，apply 抛错就是整个客户端起不来。
+    exports.inject = ['slots']
 
     exports.apply = (ctx) => {
       // key 必须是本 bundle 的包名：plugins.bundle.config 是共享命名空间，

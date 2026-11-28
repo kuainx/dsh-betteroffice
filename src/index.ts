@@ -241,6 +241,7 @@ export function apply(ctx: Context, config?: ConfigData): void {
       logger: log,
     })
     const disposers = registerControlRoutes({
+      ctx: scoped,
       web,
       api,
       admitRoute: (inner, request) => admitRoute(inner as never, request as never),

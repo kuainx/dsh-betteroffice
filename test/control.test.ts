@@ -45,6 +45,10 @@ test('rollback 必须带版本', () => {
   assert.throws(() => parseAction({ action: 'rollback' }), /回退需要指定版本/)
 })
 
+test('version 不是字符串时被拒，而不是当成没给', () => {
+  assert.throws(() => parseAction({ action: 'install', version: 123 }), /版本号看起来不对/)
+})
+
 test('合法请求原样返回', () => {
   assert.deepEqual(parseAction({ action: 'install', version: '0.4.0' }), {
     action: 'install',
