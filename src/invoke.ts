@@ -4,7 +4,39 @@ import { DomainError } from './errors.js'
 
 export type ToolDefinitionLike = { execute(args: unknown, exec: unknown): Promise<unknown> }
 
-export type ToolView = { view(scope: unknown): ReadonlyMap<string, ToolDefinitionLike> }
+// view() 的返回形状随宿主版本变过（Map / 数组 / 按名字索引的对象都见过），所以这里只要求能取到。
+export type ToolView = { view(scope: unknown): unknown }
+
+type NamedTool = { name?: unknown; execute?: unknown }
+
+function isDefinition(value: unknown): value is ToolDefinitionLike {
+  return typeof value === 'object' && value !== null && typeof (value as NamedTool).execute === 'function'
+}
+
+function findByName(list: unknown, name: string): ToolDefinitionLike | undefined {
+  if (!Array.isArray(list)) return undefined
+  const found = list.find(item => (item as NamedTool | null)?.name === name)
+  return isDefinition(found) ? found : undefined
+}
+
+/** 把宿主给的任何工具表形状取成一条工具定义；取不到返回 undefined（调用方按工具不存在处理）。 */
+export function lookupTool(view: unknown, name: string): ToolDefinitionLike | undefined {
+  if (typeof view !== 'object' || view === null) return undefined
+  const asMap = view as { get?: unknown }
+  if (typeof asMap.get === 'function') {
+    const found = (view as ReadonlyMap<string, unknown>).get(name)
+    return isDefinition(found) ? found : undefined
+  }
+  const direct = findByName(view, name)
+  if (direct !== undefined) return direct
+  const bag = view as Record<string, unknown>
+  if (isDefinition(bag[name])) return bag[name]
+  for (const key of ['definitions', 'items', 'tools']) {
+    const found = findByName(bag[key], name)
+    if (found !== undefined) return found
+  }
+  return undefined
+}
 
 export type InvokeOptions = { signal?: AbortSignal }
 
@@ -15,7 +47,7 @@ export type ToolInvoker = {
 export function createToolInvoker(tools: ToolView, scope: unknown): ToolInvoker {
   return {
     async invoke(name, args, options = {}) {
-      const definition = tools.view(scope)?.get(name)
+      const definition = lookupTool(tools.view(scope), name)
       if (definition === undefined) {
         throw new DomainError(
           'tool-not-found',
@@ -67,7 +99,7 @@ export async function waitForTool(
   const intervalMs = options.intervalMs ?? 50
   const deadline = Date.now() + timeoutMs
   for (;;) {
-    if (tools.view(scope)?.get(name) !== undefined) return
+    if (lookupTool(tools.view(scope), name) !== undefined) return
     if (Date.now() >= deadline) {
       throw new DomainError(
         'tool-timeout',

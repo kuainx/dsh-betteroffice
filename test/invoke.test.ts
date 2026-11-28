@@ -51,6 +51,29 @@ test('等工具注册：晚一点出现也能等到', async () => {
   assert.ok(polls >= 3)
 })
 
+test('宿主把工具表给成数组时也能按名字找到工具', async () => {
+  const invoker = createToolInvoker({
+    view: () => [{ name: 'mcp__bo_1__office_open', execute: async () => ({ ok: 1 }) }],
+  }, undefined)
+  assert.deepEqual(await invoker.invoke('mcp__bo_1__office_open', {}), { ok: 1 })
+})
+
+test('宿主把工具表给成按名字索引的对象时也能找到工具', async () => {
+  const invoker = createToolInvoker({
+    view: () => ({ mcp__bo_1__office_open: { execute: async () => ({ ok: 2 }) } }),
+  }, undefined)
+  assert.deepEqual(await invoker.invoke('mcp__bo_1__office_open', {}), { ok: 2 })
+})
+
+test('等工具注册：数组形态也认得', async () => {
+  await waitForTool(
+    { view: () => [{ name: 'mcp__bo_1__office_open', execute: async () => ({}) }] },
+    undefined,
+    'mcp__bo_1__office_open',
+    { timeoutMs: 1000, intervalMs: 1 },
+  )
+})
+
 test('等工具注册：超时给出 tool-timeout', async () => {
   await assert.rejects(
     () => waitForTool(viewOf({}), undefined, 'mcp__bo_1__office_open', { timeoutMs: 20, intervalMs: 1 }),
